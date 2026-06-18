@@ -1,8 +1,22 @@
 # Squeeze — Progress Tracker
 
+## Current Sprint: Monorepo Bootstrap (2026-06-18)
+
+### Phase 1 — Repo Skeleton & Docs (Complete)
+- Directory structure, CLAUDE.md, architecture.md, project_vision.md, coding_style.md
+- justfile with full iOS recipe set (build, run, run-device, debug, test, release, screenshot, devices)
+- Sprint system with template and upcoming sprints planned
+
+### Phase 4 — iOS App Migration (Complete)
+- Migrated MediaToolKit → Squeeze (4 Swift files: SqueezeApp, RootView, GalleryView, PhotoLibrary)
+- New Xcode project with file sync, bundle ID com.caquilloapps.Squeeze
+- Build settings: photo library usage description, app category, status bar style
+- Verified on simulator (iPhone 17 Pro Max) and physical device (wireless via devicectl)
+- Gallery with thumbnails, file size badges, duration badges, prefetch pre-warming all working
+
 ## Completed Sprints
 
-(none yet — this is a fresh repo)
+(none yet — first sprint in progress)
 
 ## Prior Art (from predecessor projects)
 

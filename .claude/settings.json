@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(docs/**)",
+      "Write(docs/**)",
+      "Edit(todo.md)",
+      "Write(todo.md)",
+      "Edit(progress_tracker.md)",
+      "Write(progress_tracker.md)"
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 # Sprint: Monorepo Bootstrap
 
 **Started:** 2026-06-18
-**Status:** Not Started
+**Status:** In Progress
 
 ## Goal
 A working monorepo where `just build` compiles the desktop app (Odin + core C shim) and the iOS project builds in Xcode with core C files included. No features yet — just the skeleton that proves the build works end to end.
@@ -20,8 +20,8 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - [x] Write docs/references/project_vision.md
 - [x] Write docs/references/coding_style.md (with No Magic section)
 - [x] Write sprint template
-- [ ] Write justfile with placeholder recipes
-- [ ] git init + initial commit
+- [x] Write justfile with iOS recipes (build, run, run-device, debug, test, release, screenshot, devices)
+- [x] git init + initial commit
 
 ### Phase 2 — Core C Shim Migration
 - [ ] Copy vdbg_player's vd.c/h into core/shim/ as ffmpeg_shim.c/h
@@ -37,13 +37,17 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - [ ] Verify it launches (window opens, nothing crashes)
 
 ### Phase 4 — iOS App Migration
-- [ ] Create Squeeze.xcodeproj in ios/
-- [ ] Migrate MediaToolKit's Swift files into ios/ (SqueezeApp.swift, PhotoLibrary.swift, GalleryViewController.swift)
-- [ ] Rename bundle ID to com.caquilloapps.Squeeze
+- [x] Create Squeeze.xcodeproj in ios/
+- [x] Migrate MediaToolKit's Swift files into ios/ (SqueezeApp.swift, RootView.swift, GalleryView.swift, PhotoLibrary.swift)
+- [x] Rename bundle ID to com.caquilloapps.Squeeze
 - [ ] Add core/shim/*.c and core/thumb_cache.c to Xcode project as sources
 - [ ] Create Squeeze-Bridging-Header.h exposing core C API
-- [ ] Verify the app builds for iOS device target
-- [ ] Verify existing gallery functionality still works on physical iPhone
+- [x] Verify the app builds for iOS simulator and device target
+- [x] Verify existing gallery functionality still works on physical iPhone
+- [x] Add justfile recipes for device deployment (run-device with wireless devicectl)
+
+### Phase 4.5 — Post-Migration Cleanup
+- [ ] Add SwiftFormat (.swiftformat config with tabs, justfile recipe)
 
 ### Phase 5 — Proof of Life
 - [ ] Desktop app calls a core function (even just a version string) and prints it
@@ -55,18 +59,27 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 ## Current Status
 
 **Completed:**
-- Phase 1 docs (architecture, vision, style guide, CLAUDE.md)
+- Phase 1 (repo skeleton, docs, justfile, git init)
+- Phase 4 iOS migration (Swift files, Xcode project, build verified on simulator + device)
 
 **In Progress:**
-- Phase 1 remaining (justfile, git init)
+- Phase 4.5 (SwiftFormat)
+
+**Up Next:**
+- Phase 2 (core C shim from vdbg_player)
+- Phase 3 (desktop app skeleton)
 
 **Blocked:**
-- (none)
+- Phase 4 bridging header + Phase 5 depend on Phase 2 (need core C code to bridge)
 
 ---
 
 ## Learnings
-- (captured as we go)
+- Xcode's `devicectl` supports wireless device deployment but spams provisioning warnings — filter stderr with grep
+- `devicectl` JSON output (`--json-output <file>`) is the stable interface for scripting; table output is for humans
+- Device state can be "connected" or "available (paired)" — match on `pairingState == "paired"` not `tunnelState == "connected"`
+- No CLI for attaching Xcode's debugger — use Debug > Attach to Process manually
+- Xcode's file sync (PBXFileSystemSynchronizedRootGroup) auto-discovers source files in subdirectories
 
 ---
 
