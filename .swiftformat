@@ -1,0 +1,13 @@
+--swiftversion 6.3
+--indent tabs
+--tabwidth 4
+--self insert
+--stripunusedargs closure-only
+--maxwidth 120
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--nospaceoperators ..,..<,...
+--disable redundantReturn
+--disable conditionalAssignment
+--exclude ext/

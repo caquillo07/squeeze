@@ -23,7 +23,7 @@ func checkPhotoLibraryAuth() -> PhotoLibraryAuthStatus {
 }
 
 func requestPhotoLibraryAuth() async -> PhotoLibraryAuthStatus {
-	mapAuthStatus(await PHPhotoLibrary.requestAuthorization(for: .readWrite))
+	await mapAuthStatus(PHPhotoLibrary.requestAuthorization(for: .readWrite))
 }
 
 func fetchAllAssets() -> PHFetchResult<PHAsset> {

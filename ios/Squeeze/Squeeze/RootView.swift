@@ -12,7 +12,7 @@ struct RootView: View {
 
 	var body: some View {
 		Group {
-			switch authStatus {
+			switch self.authStatus {
 			case .authorized, .limited:
 				if let assets, galleryReady {
 					GalleryView(assets: assets, onAppear: nil)
@@ -41,7 +41,7 @@ struct RootView: View {
 			case .notDetermined:
 				Color.clear
 					.task {
-						authStatus = await requestPhotoLibraryAuth()
+						self.authStatus = await requestPhotoLibraryAuth()
 					}
 			}
 		}
@@ -61,7 +61,7 @@ struct RootView: View {
 	}
 
 	private static func prefetchNewest(
-		_ assets: PHFetchResult<PHAsset>, count: Int
+		_ assets: PHFetchResult<PHAsset>, count: Int,
 	) async {
 		guard assets.count > 0 else { return }
 		let limit = min(count, assets.count)
@@ -86,7 +86,7 @@ struct RootView: View {
 							for: asset,
 							targetSize: target,
 							contentMode: .aspectFill,
-							options: options
+							options: options,
 						) { _, info in
 							let isDegraded =
 								(info?[PHImageResultIsDegradedKey] as? Bool) ?? false

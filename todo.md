@@ -47,7 +47,7 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - [x] Add justfile recipes for device deployment (run-device with wireless devicectl)
 
 ### Phase 4.5 — Post-Migration Cleanup
-- [ ] Add SwiftFormat (.swiftformat config with tabs, justfile recipe)
+- [x] Add SwiftFormat (.swiftformat config with tabs, justfile recipe)
 
 ### Phase 5 — Proof of Life
 - [ ] Desktop app calls a core function (even just a version string) and prints it

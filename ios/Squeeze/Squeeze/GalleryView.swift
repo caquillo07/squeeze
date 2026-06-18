@@ -7,11 +7,11 @@ struct GalleryView: UIViewControllerRepresentable {
 	var onAppear: (() -> Void)?
 
 	func makeUIViewController(context: Context) -> GalleryViewController {
-		return GalleryViewController(assets: assets, onAppear: onAppear)
+		return GalleryViewController(assets: self.assets, onAppear: self.onAppear)
 	}
 
 	func updateUIViewController(_ viewController: GalleryViewController, context: Context) {
-		viewController.updateAssets(assets)
+		viewController.updateAssets(self.assets)
 	}
 }
 
@@ -66,7 +66,8 @@ final class GalleryViewController: UIViewController {
 		self.collectionView.prefetchDataSource = self
 		self.collectionView.backgroundColor = .systemBackground
 		self.collectionView.register(
-			GalleryCell.self, forCellWithReuseIdentifier: GalleryCell.reuseIdentifier)
+			GalleryCell.self, forCellWithReuseIdentifier: GalleryCell.reuseIdentifier,
+		)
 	}
 
 	required init?(coder: NSCoder) {
@@ -170,7 +171,7 @@ final class GalleryViewController: UIViewController {
 			for: asset,
 			targetSize: self.thumbnailSize,
 			contentMode: .aspectFill,
-			options: self.imageRequestOptions
+			options: self.imageRequestOptions,
 		) { [weak self] image, info in
 			guard let self else { return }
 
@@ -295,12 +296,10 @@ final class GalleryViewController: UIViewController {
 		guard self.detailOverlayView == nil else { return }
 		guard let image = cell.thumbnailImage else { return }
 
-        print("showing detail\n")
-		let containerView: UIView
+		print("showing detail\n")
+		let containerView = self.view
 		if let window = self.view.window {
-			containerView = window
-		} else {
-			containerView = self.view
+			window
 		}
 		let overlayView = UIView(frame: containerView.bounds)
 		overlayView.backgroundColor = .black
@@ -334,7 +333,7 @@ final class GalleryViewController: UIViewController {
 		UIView.animate(
 			withDuration: 0.28,
 			delay: 0,
-			options: [.curveEaseInOut, .allowUserInteraction]
+			options: [.curveEaseInOut, .allowUserInteraction],
 		) {
 			overlayView.alpha = 1
 			imageView.frame = self.detailImageFrame(for: image, in: overlayView)
@@ -351,17 +350,16 @@ final class GalleryViewController: UIViewController {
 		let sourceCell = self.detailSourceIndexPath.flatMap {
 			self.collectionView.cellForItem(at: $0) as? GalleryCell
 		}
-		let sourceFrame: CGRect
-		if let sourceCell {
-			sourceFrame = sourceCell.convert(sourceCell.bounds, to: overlayView)
+		let sourceFrame: CGRect = if let sourceCell {
+			sourceCell.convert(sourceCell.bounds, to: overlayView)
 		} else {
-			sourceFrame = imageView.frame
+			imageView.frame
 		}
 
 		UIView.animate(
 			withDuration: 0.24,
 			delay: 0,
-			options: [.curveEaseInOut, .allowUserInteraction]
+			options: [.curveEaseInOut, .allowUserInteraction],
 		) {
 			overlayView.alpha = 0
 			imageView.frame = sourceFrame
@@ -384,9 +382,9 @@ final class GalleryViewController: UIViewController {
 			x: 0,
 			y: topInset,
 			width: overlayView.bounds.width,
-			height: max(metadataFrame.minY - topInset, 1)
+			height: max(metadataFrame.minY - topInset, 1),
 		)
-		return aspectFitFrame(imageSize: image.size, in: availableFrame)
+		return self.aspectFitFrame(imageSize: image.size, in: availableFrame)
 	}
 
 	private func detailMetadataFrame(in overlayView: UIView) -> CGRect {
@@ -396,7 +394,7 @@ final class GalleryViewController: UIViewController {
 			x: 0,
 			y: overlayView.bounds.height - bottomInset - height,
 			width: overlayView.bounds.width,
-			height: height + bottomInset
+			height: height + bottomInset,
 		)
 	}
 
@@ -412,7 +410,7 @@ final class GalleryViewController: UIViewController {
 			x: bounds.midX - width / 2,
 			y: bounds.midY - height / 2,
 			width: width,
-			height: height
+			height: height,
 		)
 	}
 }
@@ -426,11 +424,11 @@ extension GalleryViewController: UICollectionViewDataSource {
 
 	func collectionView(
 		_ collectionView: UICollectionView,
-		cellForItemAt indexPath: IndexPath
+		cellForItemAt indexPath: IndexPath,
 	) -> UICollectionViewCell {
 		let cell = collectionView.dequeueReusableCell(
 			withReuseIdentifier: GalleryCell.reuseIdentifier,
-			for: indexPath
+			for: indexPath,
 		)
 		guard let cell = cell as? GalleryCell else {
 			return UICollectionViewCell()
@@ -450,7 +448,7 @@ extension GalleryViewController: UICollectionViewDataSource {
 extension GalleryViewController: UICollectionViewDelegate {
 	func collectionView(
 		_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell,
-		forItemAt indexPath: IndexPath
+		forItemAt indexPath: IndexPath,
 	) {
 		guard let cell = cell as? GalleryCell else { return }
 		let asset = self.assets.object(at: indexPath.item)
@@ -460,7 +458,7 @@ extension GalleryViewController: UICollectionViewDelegate {
 
 	func collectionView(
 		_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell,
-		forItemAt indexPath: IndexPath
+		forItemAt indexPath: IndexPath,
 	) {
 		self.cancelImageRequest(at: indexPath)
 		self.cancelFileSizeTask(at: indexPath)
@@ -473,15 +471,14 @@ extension GalleryViewController: UICollectionViewDelegate {
 }
 
 extension GalleryViewController: UICollectionViewDataSourcePrefetching {
-	func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath])
-	{
+	func collectionView(_ collectionView: UICollectionView, prefetchItemsAt indexPaths: [IndexPath]) {
 		for indexPath in indexPaths {
 			self.prefetchThumbnail(at: indexPath)
 		}
 	}
 
 	func collectionView(
-		_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath]
+		_ collectionView: UICollectionView, cancelPrefetchingForItemsAt indexPaths: [IndexPath],
 	) {
 		for indexPath in indexPaths {
 			self.cancelPrefetchRequest(at: indexPath)
@@ -507,7 +504,7 @@ extension GalleryViewController: UICollectionViewDataSourcePrefetching {
 			for: asset,
 			targetSize: self.thumbnailSize,
 			contentMode: .aspectFill,
-			options: self.imageRequestOptions
+			options: self.imageRequestOptions,
 		) { [weak self] image, info in
 			guard let self else { return }
 
@@ -579,13 +576,16 @@ private final class GalleryCell: UICollectionViewCell {
 			self.imageView.bottomAnchor.constraint(equalTo: self.contentView.bottomAnchor),
 
 			self.durationLabel.trailingAnchor.constraint(
-				equalTo: self.contentView.trailingAnchor, constant: -4),
+				equalTo: self.contentView.trailingAnchor, constant: -4,
+			),
 			self.durationLabel.bottomAnchor.constraint(
-				equalTo: self.contentView.bottomAnchor, constant: -4),
+				equalTo: self.contentView.bottomAnchor, constant: -4,
+			),
 
 			self.fileSizeLabel.centerXAnchor.constraint(equalTo: self.contentView.centerXAnchor),
 			self.fileSizeLabel.bottomAnchor.constraint(
-				equalTo: self.contentView.bottomAnchor, constant: -4),
+				equalTo: self.contentView.bottomAnchor, constant: -4,
+			),
 		])
 	}
 
@@ -642,8 +642,8 @@ private final class GalleryCell: UICollectionViewCell {
 	}
 }
 
-extension UIView {
-	fileprivate var windowScale: CGFloat {
+private extension UIView {
+	var windowScale: CGFloat {
 		window?.screen.scale ?? traitCollection.displayScale
 	}
 }

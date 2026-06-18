@@ -234,6 +234,16 @@ run-desktop: build-desktop
 build-shim:
     @echo "TODO: cc -c core/shim/ffmpeg_shim.c ..."
 
+# ── Format & Lint ────────────────────────────
+
+# Format all code
+fmt:
+    swiftformat ios/
+
+# Lint all code (no changes, exits 1 on violations)
+lint:
+    swiftformat --lint ios/
+
 # ── Utilities ────────────────────────────────
 
 # List available simulators and physical devices
