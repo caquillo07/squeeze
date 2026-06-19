@@ -24,23 +24,25 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - [x] git init + initial commit
 
 ### Phase 2 — Core C Shim Migration
-- [ ] Copy vdbg_player's vd.c/h into core/shim/ as ffmpeg_shim.c/h
-- [ ] Clean up the shim: remove vdbg_player-specific code, keep the clean ffmpeg API surface
-- [ ] Verify it compiles standalone: `cc -c core/shim/ffmpeg_shim.c`
+- [x] Copy vdbg_player's vd.c/h into core/shim/
+- [x] Verify it compiles standalone: `clang -c core/shim/vd.c`
 - [ ] Write a minimal thumb_cache.c/h stub (API only, implementation later)
 
 ### Phase 3 — Desktop App Skeleton
-- [ ] Copy vdbg_player's main.odin + essentials into desktop/
-- [ ] Update import paths to reference core/ and ext/
-- [ ] Copy SDL3 bindings into ext/sdl3/
-- [ ] Get `just build-desktop` compiling and linking
-- [ ] Verify it launches (window opens, nothing crashes)
+- [x] Copy vdbg_player's Odin source into desktop/
+- [x] Update foreign import paths (vd.odin → build/desktop/libvd.a)
+- [x] Copy SDL_gpu_shadercross into ext/
+- [x] Add odinfmt.json, shaders, fonts
+- [x] Get `just build-desktop` compiling and linking (C shim + shaders + Odin)
+- [x] Verify it launches (window opens, red test frame renders)
+- [x] Add `just build-deps` recipe for shadercross
+- [x] Fix dummy frame pixel stride bug
 
 ### Phase 4 — iOS App Migration
 - [x] Create Squeeze.xcodeproj in ios/
 - [x] Migrate MediaToolKit's Swift files into ios/ (SqueezeApp.swift, RootView.swift, GalleryView.swift, PhotoLibrary.swift)
 - [x] Rename bundle ID to com.caquilloapps.Squeeze
-- [ ] Add core/shim/*.c and core/thumb_cache.c to Xcode project as sources
+- [ ] Add core/shim/*.c to Xcode project as sources
 - [ ] Create Squeeze-Bridging-Header.h exposing core C API
 - [x] Verify the app builds for iOS simulator and device target
 - [x] Verify existing gallery functionality still works on physical iPhone
@@ -48,9 +50,11 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 
 ### Phase 4.5 — Post-Migration Cleanup
 - [x] Add SwiftFormat (.swiftformat config with tabs, justfile recipe)
+- [x] Add odinfmt to `just fmt` recipe
+- [x] Gate swiftformat behind macOS check
 
 ### Phase 5 — Proof of Life
-- [ ] Desktop app calls a core function (even just a version string) and prints it
+- [x] Desktop app calls a core function (vd_hello) and prints it
 - [ ] iOS app calls the same core function through the bridging header and logs it
 - [ ] Both consuming the same source file from core/ — confirmed shared code
 
@@ -60,17 +64,17 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 
 **Completed:**
 - Phase 1 (repo skeleton, docs, justfile, git init)
+- Phase 2 (C shim migrated, compiles via `just build-shim`)
+- Phase 3 (desktop app migrated, builds and runs via `just build-desktop` / `just run-desktop`)
 - Phase 4 iOS migration (Swift files, Xcode project, build verified on simulator + device)
-
-**In Progress:**
-- Phase 4.5 (SwiftFormat)
+- Phase 4.5 (SwiftFormat + odinfmt, macOS-gated)
 
 **Up Next:**
-- Phase 2 (core C shim from vdbg_player)
-- Phase 3 (desktop app skeleton)
+- Phase 4 remaining: bridging header + core C in Xcode project
+- Phase 5: iOS calling core function to prove shared code
 
 **Blocked:**
-- Phase 4 bridging header + Phase 5 depend on Phase 2 (need core C code to bridge)
+- (none)
 
 ---
 
@@ -80,6 +84,9 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - Device state can be "connected" or "available (paired)" — match on `pairingState == "paired"` not `tunnelState == "connected"`
 - No CLI for attaching Xcode's debugger — use Debug > Attach to Process manually
 - Xcode's file sync (PBXFileSystemSynchronizedRootGroup) auto-discovers source files in subdirectories
+- SDL3 `UpdateTexture` pitch param is bytes per row (width * 4 for RGBA), not bytes per pixel
+- `glslc` requires `-fshader-stage` flag before the input file, not after
+- Odin `foreign import` paths are relative to the source file, not the build directory
 
 ---
 

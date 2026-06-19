@@ -220,29 +220,75 @@ screenshot-ios platform="ios":
 
 # ── Desktop (Odin + SDL3) ───────────────────
 
+# Build core C shim (vd.c → libvd.a)
+build-shim:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p build/desktop
+    clang -c core/shim/vd.c -o build/desktop/vd.o
+    ar rcs build/desktop/libvd.a build/desktop/vd.o
+
+# Compile GLSL shaders to SPIR-V
+build-shaders:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p build/shaders
+    for f in desktop/shaders/*.glsl; do
+        base=$(basename "$f" .glsl)
+        short_stage="${base##*.}"
+        case "$short_stage" in
+            vert) stage=vertex ;;
+            frag) stage=fragment ;;
+            comp) stage=compute ;;
+            *)    stage="$short_stage" ;;
+        esac
+        glslc -fshader-stage="$stage" "$f" -o "build/shaders/${base}.spv"
+    done
+    echo "Shaders compiled."
+
 # Build desktop app
-build-desktop:
-    @echo "TODO: odin build desktop/ ..."
+build-desktop: build-shim build-shaders
+    #!/usr/bin/env bash
+    set -euo pipefail
+    odinfmt -w desktop/
+    odin build desktop/ -out:build/squeeze-desktop -debug
 
 # Build and run desktop app
 run-desktop: build-desktop
-    @echo "TODO: run desktop binary"
-
-# ── Core (C shim) ───────────────────────────
-
-# Build core C shim
-build-shim:
-    @echo "TODO: cc -c core/shim/ffmpeg_shim.c ..."
+    ./build/squeeze-desktop
 
 # ── Format & Lint ────────────────────────────
 
+# ── Dependencies ─────────────────────────────
+
+# Build vendored dependencies (run once per machine)
+build-deps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building SDL_gpu_shadercross..."
+    cd ext/SDL_gpu_shadercross
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DSDLSHADERCROSS_VENDORED=ON -DSDLSHADERCROSS_CLI=OFF
+    cmake --build build --config Release
+    echo "Dependencies built."
+
 # Format all code
 fmt:
-    swiftformat ios/
+    #!/usr/bin/env bash
+    odinfmt -w desktop/
+    if [[ "$(uname)" == "Darwin" ]]; then
+        swiftformat ios/
+    else
+        echo "Skipping swiftformat (macOS only)"
+    fi
 
 # Lint all code (no changes, exits 1 on violations)
 lint:
-    swiftformat --lint ios/
+    #!/usr/bin/env bash
+    if [[ "$(uname)" == "Darwin" ]]; then
+        swiftformat --lint ios/
+    else
+        echo "Skipping swiftformat lint (macOS only)"
+    fi
 
 # ── Utilities ────────────────────────────────
 

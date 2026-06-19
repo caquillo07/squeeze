@@ -1,0 +1,22 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "SPIRV-Cross-arm64-apple-macosx-debug.module": ["<SPIRV-Cross-arm64-apple-macosx-debug.module>"]
+  "main": []
+  "test": []
+default: "main"
+nodes:
+  "/Users/hector/code/squeeze/ext/SDL_gpu_shadercross/external/SPIRV-Cross/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/hector/code/squeeze/ext/SDL_gpu_shadercross/external/SPIRV-Cross/","/Users/hector/code/squeeze/ext/SDL_gpu_shadercross/external/SPIRV-Cross/Package.swift","/Users/hector/code/squeeze/ext/SDL_gpu_shadercross/external/SPIRV-Cross/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
