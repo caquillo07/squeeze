@@ -1,4 +1,0 @@
-module SPIRV_Cross {
-    umbrella "/Users/hector/code/squeeze/ext/SDL_gpu_shadercross/external/SPIRV-Cross"
-    export *
-}
