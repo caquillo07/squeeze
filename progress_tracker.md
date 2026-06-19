@@ -42,7 +42,27 @@
 
 ## Completed Sprints
 
-(none yet — first sprint in progress)
+### Monorepo Bootstrap (2026-06-18 → 2026-06-19) — Archived
+- Repo skeleton, docs, justfile, git init
+- Core C shim + Odin core (`core/squeeze.odin`) migrated
+- Desktop app (Odin + SDL3) migrated, builds and runs
+- iOS app (Swift/UIKit) migrated, builds on simulator + device
+- Proof of life: iOS calls both Odin core and C shim through the bridging header
+- Odin cross-compiles to iOS static lib via Xcode Run Script → `just build-core-ios`
+- Full archive: `docs/sprints/completed/2026-06_monorepo_bootstrap.md`
+
+## Current Sprint: Media Detail View (2026-06-19)
+Photos-style detail view as a dedicated `DetailViewController` — custom transition, pinch-zoom, AVPlayer video, tap-toggle tool chrome (all v1 tools stubbed), pan-driven metadata panel. Stubs the core job API to prove the one-way poll wiring. See `todo.md`.
+
+### v1 Roadmap
+- **Alpha** (shareable): gallery + detail view + image compress/convert + video playback/compress/convert + save/share. iOS = all platform APIs, no ffmpeg.
+- **Beta** (competitive): trim + crop/rotate + metadata view + strip location/EXIF. Editing stop line: crop, rotate, trim.
+- **Release**: onboarding, edge cases (Live Photos/HDR), perf/battery, store assets.
+- Bulk editing deferred to fast-follow (job system built addressable for it).
+
+### Settled Architecture (docs/references/architecture.md)
+- Core is the platform layer, UI is the game: UI relays intent, core owns all logic + calls platform codecs (VideoToolbox/ImageIO on Apple, ffmpeg elsewhere).
+- Async job system: addressable jobs + queue + one worker (N later for bulk). One-way calls — UI polls per frame (`CADisplayLink` on iOS), core never calls up.
 
 ## Prior Art (from predecessor projects)
 

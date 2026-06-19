@@ -143,6 +143,61 @@ Compression has two backends, selected at compile time:
 
 Both implement the same interface (function pointer table in `compress.odin`). The consumer doesn't know which backend is active.
 
+## Core Is The Platform Layer (UI Is The Game)
+
+Handmade Hero split: the **UI is the game**, the **core is the platform layer**. The UI expresses *intent* ("convert this HEIC to JPEG", "compress to ~10 MB") and knows nothing about *how*. Core owns every decision — target-size→bitrate math, format selection, preset definitions, quality fallbacks, validation — and calls whatever's best on the current OS:
+
+```
+core: convert(asset, .heic, .jpeg)        ← one call site, ALL logic here
+  when Darwin    → ImageIO / VideoToolbox  (C/CoreFoundation, via shim)
+  when Linux/Win → ffmpeg / imagemagick / whatever is fastest
+```
+
+Why: **if Swift decides anything, that decision is stranded on iOS and desktop has to reimplement it.** Push it all into core and both frontends stay dumb — they render and relay intent, nothing more.
+
+This works because the Apple codec APIs are **C-callable**: VideoToolbox is pure C, ImageIO is C/CF. So the shim is real C that core dispatches into — not Swift. (AVFoundation — `AVPlayer`, `AVAssetExportSession` — is Obj-C, so it stays in the UI layer for *playback only*, which is presentation anyway. Video *compression* uses VideoToolbox to keep the logic in core.)
+
+### The one unavoidable platform glue
+
+Data *access* is Apple-specific — PhotoKit/`PHAsset` is an Apple concept. So Swift always does a thin bit: fetch the asset's bytes/URL, hand them to core, write the result back to the library. That's *plumbing, not logic* — no decisions, just "here are the bytes" / "save these bytes." The line: **data access & permissions = thin platform glue; everything else = core.**
+
+## Async — The Job System
+
+Long-running work (compression, conversion) is async. Core owns the **job lifecycle** — start, progress, cancel, done — same as it owns the logic.
+
+```c
+typedef uint64_t Job_Id;
+typedef enum { JOB_QUEUED, JOB_RUNNING, JOB_DONE, JOB_FAILED, JOB_CANCELLED } Job_State;
+typedef struct { Job_State state; float progress; int error_code; /* result */ } Job_Status;
+
+Job_Id     squeeze_submit_convert(const char* src, int from_fmt, int to_fmt);
+Job_Status squeeze_poll(Job_Id id);   // pure read, cheap, called every frame
+void       squeeze_cancel(Job_Id id);
+```
+
+A **job is a value with an id**, and status is **per-job** (never global). Jobs go into a queue; **one worker thread drains it today.** Bulk editing later = bump the worker count from 1 to N — nothing else changes, because status was never global and callers already poll by id. The corner that traps you is a single-job mental model (global status vars, no job identity), *not* the worker count. Addressable jobs + a queue is the cheap prep that leaves the door open with zero speculative machinery.
+
+Concurrency primitives available from C on Apple platforms: pthreads (portable), C11 atomics (`<stdatomic.h>`), GCD/libdispatch (C API), `os_unfair_lock`. Swift's `async/await`/actors are **not** C-callable, so they never appear in core. Core owns a portable thread/job model (Odin `core:thread` + `core:sync`); GCD only shows up at the Apple codec boundary and is absorbed by the shim.
+
+## One-Way Calls (UI Polls, Core Never Calls Up)
+
+**The UI polls core once per frame. Core never calls back into the UI.** Callbacks from platform codecs (e.g. VideoToolbox firing on a GCD queue) land in the *shim* — below the UI boundary — write into the job's status, and stop there. The game is only ever *pulled from*, never *called into*.
+
+Why: a one-way data flow makes the business logic a pure function of state you can test by calling it and reading the result — no mock army reconstructing the logic, no callback spaghetti.
+
+- **Desktop** polls in its existing frame loop for free.
+- **iOS** drives polling with a `CADisplayLink` (the frame tick), alive *only while a job runs* — spin up on submit, invalidate on terminal state. Idle = no polling = battery stays sacred.
+
+```odin
+// desktop — same poll(), driven by the native loop
+for app_running {
+    status := squeeze_poll(job_id)
+    draw_progress(status.progress)
+}
+```
+
+The poll fields live directly on the owning view controller (no monitor class — see the flatten-ownership rule in coding_style). The controller's deterministic lifecycle (`viewWillDisappear`) tears down the `CADisplayLink`, which is exactly why no weak-proxy ceremony is needed.
+
 ## Data Flow
 
 ```
