@@ -26,7 +26,7 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 ### Phase 2 — Core C Shim Migration
 - [x] Copy vdbg_player's vd.c/h into core/shim/
 - [x] Verify it compiles standalone: `clang -c core/shim/vd.c`
-- [ ] Write a minimal thumb_cache.c/h stub (API only, implementation later)
+- ~~Write a minimal thumb_cache.c/h stub~~ (deferred — new functionality, not migration)
 
 ### Phase 3 — Desktop App Skeleton
 - [x] Copy vdbg_player's Odin source into desktop/
