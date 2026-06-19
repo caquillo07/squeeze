@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C4C14D1E2FE4EE3F00302452 /* vd.c in Sources */ = {isa = PBXBuildFile; fileRef = C4C14D1B2FE4EE3F00302452 /* vd.c */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C4C14CD52FE4A1A700302452 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,8 @@
 		C4C14CC72FE4A1A600302452 /* Squeeze.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Squeeze.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4C14CD42FE4A1A700302452 /* SqueezeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SqueezeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4C14CDE2FE4A1A700302452 /* SqueezeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SqueezeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C4C14D1A2FE4EE3F00302452 /* vd.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = vd.h; sourceTree = "<group>"; };
+		C4C14D1B2FE4EE3F00302452 /* vd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = vd.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +81,7 @@
 		C4C14CBE2FE4A1A600302452 = {
 			isa = PBXGroup;
 			children = (
+				C4C14D1C2FE4EE3F00302452 /* shim */,
 				C4C14CC92FE4A1A600302452 /* Squeeze */,
 				C4C14CD72FE4A1A700302452 /* SqueezeTests */,
 				C4C14CE12FE4A1A700302452 /* SqueezeUITests */,
@@ -92,6 +99,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		C4C14D1C2FE4EE3F00302452 /* shim */ = {
+			isa = PBXGroup;
+			children = (
+				C4C14D1A2FE4EE3F00302452 /* vd.h */,
+				C4C14D1B2FE4EE3F00302452 /* vd.c */,
+			);
+			name = shim;
+			path = /Users/hector/code/squeeze/core/shim;
+			sourceTree = "<absolute>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -99,6 +116,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C4C14CE82FE4A1A700302452 /* Build configuration list for PBXNativeTarget "Squeeze" */;
 			buildPhases = (
+				C4C14D182FE4E63600302452 /* Build Odin Core */,
 				C4C14CC32FE4A1A600302452 /* Sources */,
 				C4C14CC42FE4A1A600302452 /* Frameworks */,
 				C4C14CC52FE4A1A600302452 /* Resources */,
@@ -231,11 +249,34 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		C4C14D182FE4E63600302452 /* Build Odin Core */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Odin Core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/libsqueeze_core.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n/Users/hector/code/squeeze/scripts/build_odin_core.sh\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		C4C14CC32FE4A1A600302452 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C4C14D1E2FE4EE3F00302452 /* vd.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,11 +440,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 28H8VNDZM2;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Squeeze needs access to your photo library to browse and work with your media.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
@@ -413,13 +456,16 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR)";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqueeze_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.caquilloapps.Squeeze;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Squeeze/Squeeze-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -435,7 +481,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 28H8VNDZM2;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Squeeze needs access to your photo library to browse and work with your media.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -449,13 +497,16 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = "$(BUILT_PRODUCTS_DIR)";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-lsqueeze_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.caquilloapps.Squeeze;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Squeeze/Squeeze-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -32,6 +32,14 @@
 - odinfmt integrated into `just fmt`
 - swiftformat gated behind macOS check for Linux compatibility
 
+### Phase 5 — Proof of Life (Complete)
+- Odin core (`core/squeeze.odin`) compiles to iOS static lib via `just build-core-ios`
+- Xcode Run Script phase calls `scripts/build_odin_core.sh` → `just build-core-ios`
+- Bridging header exposes both Odin (`squeeze_version`, `squeeze_add`) and C shim (`vd_hello`) functions
+- Swift successfully calls Odin and C: `[Squeeze] Odin core v0.1.0, 40 + 2 = 42` + `hello from C shim!`
+- `build-deps` updated: shadercross builds out-of-tree to `build/deps/shadercross/`, DXC disabled, `-j4`
+- `.gitignore` expanded to cover `.build/`, `*.xcuserstate`, `DerivedData/`, `.DS_Store`
+
 ## Completed Sprints
 
 (none yet — first sprint in progress)

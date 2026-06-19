@@ -42,8 +42,8 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - [x] Create Squeeze.xcodeproj in ios/
 - [x] Migrate MediaToolKit's Swift files into ios/ (SqueezeApp.swift, RootView.swift, GalleryView.swift, PhotoLibrary.swift)
 - [x] Rename bundle ID to com.caquilloapps.Squeeze
-- [ ] Add core/shim/*.c to Xcode project as sources
-- [ ] Create Squeeze-Bridging-Header.h exposing core C API
+- [x] Add core/shim/*.c to Xcode project as sources
+- [x] Create Squeeze-Bridging-Header.h exposing core C API
 - [x] Verify the app builds for iOS simulator and device target
 - [x] Verify existing gallery functionality still works on physical iPhone
 - [x] Add justfile recipes for device deployment (run-device with wireless devicectl)
@@ -55,8 +55,8 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 
 ### Phase 5 — Proof of Life
 - [x] Desktop app calls a core function (vd_hello) and prints it
-- [ ] iOS app calls the same core function through the bridging header and logs it
-- [ ] Both consuming the same source file from core/ — confirmed shared code
+- [x] iOS app calls the same core function through the bridging header and logs it
+- [x] Both consuming the same source file from core/ — confirmed shared code
 
 ---
 
@@ -66,12 +66,12 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - Phase 1 (repo skeleton, docs, justfile, git init)
 - Phase 2 (C shim migrated, compiles via `just build-shim`)
 - Phase 3 (desktop app migrated, builds and runs via `just build-desktop` / `just run-desktop`)
-- Phase 4 iOS migration (Swift files, Xcode project, build verified on simulator + device)
+- Phase 4 (iOS migration complete: Swift files, Xcode project, bridging header, core C + Odin linked)
 - Phase 4.5 (SwiftFormat + odinfmt, macOS-gated)
+- Phase 5 (proof of life: iOS calls both Odin core and C shim functions)
 
 **Up Next:**
-- Phase 4 remaining: bridging header + core C in Xcode project
-- Phase 5: iOS calling core function to prove shared code
+- Sprint complete — archive and plan next sprint
 
 **Blocked:**
 - (none)
@@ -87,6 +87,14 @@ We're unifying four related projects (vdb, video_editor, vdbg_player, MediaToolK
 - SDL3 `UpdateTexture` pitch param is bytes per row (width * 4 for RGBA), not bytes per pixel
 - `glslc` requires `-fshader-stage` flag before the input file, not after
 - Odin `foreign import` paths are relative to the source file, not the build directory
+- Odin cross-compiles to iOS via `-target:darwin_arm64 -subtarget:iphone` (or `iphonesimulator`)
+- `-build-mode:lib -no-entry-point` produces a static `.a` with exported C-ABI functions
+- Odin runtime gets baked into the `.a` — stick to one Odin static lib per app to avoid duplicate symbols
+- Xcode Run Script phases run top to bottom — Odin lib must build before Compile Sources
+- `ENABLE_USER_SCRIPT_SANDBOXING = NO` required for Run Script to access odin/just outside Xcode sandbox
+- SDL_gpu_shadercross: `-DSDLSHADERCROSS_DXC=OFF` skips the massive DXC/LLVM fork build (only need SPIRV-Cross)
+- Xcode 26.4 SDK rejects `std::is_nothrow_constructible` specialization in DXC — suppress with `-Wno-invalid-specialization`
+- `self.view` on UIViewController is now optional in Xcode 26.4 SDK
 
 ---
 

@@ -218,6 +218,21 @@ screenshot-ios platform="ios":
     esac
     echo "$out"
 
+# ── Core ────────────────────────────────────
+
+# Build Odin core as static lib for iOS: just build-core-ios [iphone|iphonesimulator] [output_dir]
+build-core-ios subtarget="iphonesimulator" output_dir="build/ios":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{output_dir}}"
+    odin build core/ \
+        -build-mode:lib \
+        -target:darwin_arm64 \
+        -subtarget:{{subtarget}} \
+        -no-entry-point \
+        -out:"{{output_dir}}/libsqueeze_core.a"
+    echo "Built Odin core for {{subtarget}} → {{output_dir}}/libsqueeze_core.a"
+
 # ── Desktop (Odin + SDL3) ───────────────────
 
 # Build core C shim (vd.c → libvd.a)
@@ -266,9 +281,15 @@ build-deps:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Building SDL_gpu_shadercross..."
-    cd ext/SDL_gpu_shadercross
-    cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DSDLSHADERCROSS_VENDORED=ON -DSDLSHADERCROSS_CLI=OFF
-    cmake --build build --config Release
+    cmake -S ext/SDL_gpu_shadercross -B build/deps/shadercross \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DSDLSHADERCROSS_VENDORED=ON \
+        -DSDLSHADERCROSS_DXC=OFF \
+        -DSDLSHADERCROSS_SPIRVCROSS_SHARED=OFF \
+        -DSDLSHADERCROSS_CLI=OFF \
+        -DCMAKE_CXX_FLAGS="-Wno-invalid-specialization"
+    cmake --build build/deps/shadercross --config Release -j8
     echo "Dependencies built."
 
 # Format all code

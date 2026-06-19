@@ -3,7 +3,7 @@ package main
 import "core:c"
 import sdl "vendor:sdl3"
 
-SHADERCROSS_LIB_PATH :: "../ext/SDL_gpu_shadercross/build/"
+SHADERCROSS_LIB_PATH :: "../build/deps/shadercross/"
 
 foreign import shadercross_lib {SHADERCROSS_LIB_PATH + "libSDL3_shadercross.a"}
 

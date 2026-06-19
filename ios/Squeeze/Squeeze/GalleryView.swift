@@ -37,7 +37,7 @@ final class GalleryViewController: UIViewController {
 	private let maxFileSizeTaskCount = 2
 
 	private var thumbnailSize: CGSize {
-		let cellSize = self.itemSideLength * self.view.windowScale
+		let cellSize = self.itemSideLength * (self.view?.windowScale ?? 2.0)
 		return CGSize(width: cellSize, height: cellSize)
 	}
 
@@ -297,10 +297,7 @@ final class GalleryViewController: UIViewController {
 		guard let image = cell.thumbnailImage else { return }
 
 		print("showing detail\n")
-		let containerView = self.view
-		if let window = self.view.window {
-			window
-		}
+		guard let containerView = self.view else { return }
 		let overlayView = UIView(frame: containerView.bounds)
 		overlayView.backgroundColor = .black
 		overlayView.alpha = 0
