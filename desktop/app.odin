@@ -39,6 +39,6 @@ app_init :: proc(editor: ^App_State) {
 
 }
 
-app_update_and_render :: proc(app: ^App_State, app_input: ^App_Input, dt: f32, window_width, window_height: u32) {
+app_update_and_render :: proc(app: ^App_State, app_input: ^App_Input, dt: f64, window_width, window_height: u32) {
 
 }

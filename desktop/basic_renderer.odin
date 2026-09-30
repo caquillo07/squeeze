@@ -11,6 +11,7 @@ Basic_Renderer :: struct {
 }
 
 basic_renderer_init :: proc() {
+	basic_renderer_init_at := time_now()
 	basic_renderer := &platform.basic_renderer
 	app_name := strings.unsafe_string_to_cstring(WindowAppName)
 	sdl.CreateWindowAndRenderer(
@@ -37,6 +38,8 @@ basic_renderer_init :: proc() {
 	if basic_renderer.video_texture == nil {
 		log_sdl_fatal("failed to create video texture")
 	}
+	basic_renderer_ended_at := time_now()
+	platform.runtime_stats.basic_renderer_init_ms = elapsed_from_ms(basic_renderer_init_at, basic_renderer_ended_at)
 }
 
 basic_renderer_deinit :: proc() {

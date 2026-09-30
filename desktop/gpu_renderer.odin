@@ -44,6 +44,7 @@ Image_Type :: enum {
 
 init_renderer :: proc() {
 	// Create window
+	renderer_init_at := time_now()
 	renderer := &platform.gpu_renderer
 	app_name := strings.unsafe_string_to_cstring(WindowAppName)
 	renderer.window = sdl.CreateWindow(app_name, WindowWidth, WindowHeight, {.RESIZABLE})
@@ -129,14 +130,12 @@ init_renderer :: proc() {
 	if renderer.nearest_clamp_sampler == nil {
 		log_sdl_fatal("Failed to create sprite sampler")
 	}
+	renderer_ended_at := time_now()
+	platform.runtime_stats.renderer_init_ms = elapsed_from_ms(renderer_init_at, renderer_ended_at)
 
 	// Pipelines
-
-	// Load shaders (into scratch — bytes only needed until ShaderCross compiles them)
 	shader_count: int
-	shader_start := sdl.GetPerformanceCounter()
 
-	// Sprite pipeline
 	sprite_vert_shader := load_shader("build/shaders/frame.vert.spv", .VERTEX, 1, 0)
 	defer sdl.ReleaseGPUShader(renderer.device, sprite_vert_shader)
 	shader_count += 1
@@ -144,11 +143,15 @@ init_renderer :: proc() {
 	defer sdl.ReleaseGPUShader(renderer.device, sprite_frag_shader)
 	shader_count += 1
 
-	renderer.pipelines[.Frame] = create_frame_pipeline(sprite_vert_shader, sprite_frag_shader)
-
 	// Report shader compilation time
-	shader_elapsed := elapsed_ms(shader_start)
-	log.infof("Shader compilation: %.2fms (%d shaders)", shader_elapsed, shader_count)
+	shader_ended_at := time_now()
+	platform.runtime_stats.shader_init_ms = elapsed_from_ms(renderer_ended_at, shader_ended_at)
+	log.infof("Shader compilation: %.2fms (%d shaders)", platform.runtime_stats.shader_init_ms, shader_count)
+
+	// Sprite pipeline
+	renderer.pipelines[.Frame] = create_frame_pipeline(sprite_vert_shader, sprite_frag_shader)
+	pipelines_ended_at := time_now()
+	platform.runtime_stats.pipeline_init_ms = elapsed_from_ms(shader_ended_at, pipelines_ended_at)
 }
 
 deinit_renderer :: proc() {

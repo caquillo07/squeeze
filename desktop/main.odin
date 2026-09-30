@@ -2,11 +2,12 @@ package main
 
 import "base:intrinsics"
 import "base:runtime"
-import fmt "core:fmt"
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import vmem "core:mem/virtual"
-import os "core:os"
+import "core:reflect"
+import "core:strings"
 import sdl "vendor:sdl3"
 //import "vendor:sdl3/ttf"
 
@@ -16,21 +17,43 @@ WindowHeight :: 720
 
 MainFontSize :: 38
 
-Debug_Timing :: struct {
-	fps:                        f32,
-	frame_ms:                   f32,
-	platform_init_elapsed:      f32,
-	current_frame_pts:          f64,
-	current_frame_dts:          f64,
-	current_frame_is_key_frame: bool,
+Runtime_Stats :: struct {
+	// Platform related timings
+	platform_init_ms:               f64,
+	app_init_ms:                    f64,
+	app_close_ms:                   f64,
+	renderer_init_ms:               f64,
+	basic_renderer_init_ms:         f64,
+	shader_init_ms:                 f64,
+	pipeline_init_ms:               f64,
+
+	// Platform resources
+	permanent_start_reserved_bytes: uint,
+	permanent_reserved_bytes:       uint,
+	scratch_start_reserved_bytes:   uint,
+	scratch_reserved_bytes:         uint,
+
+
+	// App related timings
+	fps:                            f64,
+	prev_frame_ms:                  f64,
+	frame_input_ms:                 f64,
+	frame_update_ms:                f64,
+	frame_draw_ms:                  f64,
+
+	// Playback + Debug
+	current_frame_pts:              f64,
+	current_frame_dts:              f64,
+	current_frame_is_key_frame:     bool,
 }
 
 Platform :: struct {
+	clock_freq:     f64,
 	gpu_renderer:   GPU_Renderer,
 	basic_renderer: Basic_Renderer,
 	app:            App_State,
 	app_input:      App_Input,
-	debug_timing:   Debug_Timing,
+	runtime_stats:  Runtime_Stats,
 
 	// fonts - todo(hector) move to...?
 	//	main_font:      ^ttf.Font,
@@ -39,7 +62,21 @@ Platform :: struct {
 platform: Platform
 
 main :: proc() {
+	platform_close_started_at: u64
+	platform_init_at := time_now()
+
+	defer {
+		// too lazy to come up with somehting better, but good enough for now.
+		platform_close_ended_at := time_now()
+		platform.runtime_stats.app_close_ms = elapsed_from_ms(platform_close_started_at, platform_close_ended_at)
+		platform_print_runtime_metrics(platform.runtime_stats)
+
+		// meh, wont get counted, fix later
+		log.destroy_console_logger(context.logger)
+	}
 	vd_hello()
+
+	platform.clock_freq = f64(sdl.GetPerformanceFrequency())
 
 	// App memory — growable virtual memory arenas
 	// Initial block sizes are our best guess. If they grow, we log it so we can tune.
@@ -63,13 +100,14 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator
 
 	context.logger = log.create_console_logger()
-	defer log.destroy_console_logger(context.logger)
 
 	// Track arena sizes so we can warn on growth and tune initial sizes
-	permanent_reserved := permanent_arena.total_reserved
-	scratch_reserved := scratch_arena.total_reserved
-	log.infof("Permanent arena: %s reserved", format_bytes(permanent_reserved))
-	log.infof("Scratch arena: %s reserved", format_bytes(scratch_reserved))
+	platform.runtime_stats.permanent_start_reserved_bytes = permanent_arena.total_reserved
+	platform.runtime_stats.permanent_reserved_bytes = permanent_arena.total_reserved
+	platform.runtime_stats.scratch_start_reserved_bytes = scratch_arena.total_reserved
+	platform.runtime_stats.scratch_reserved_bytes = scratch_arena.total_reserved
+	log.infof("Permanent arena: %s reserved", format_bytes(permanent_arena.total_reserved))
+	log.infof("Scratch arena: %s reserved", format_bytes(scratch_arena.total_reserved))
 
 	// Init SDL
 	_ctx := context
@@ -101,12 +139,12 @@ main :: proc() {
 	//		log_sdl_fatal("failed to open main font")
 	//	}
 
-	// Main loop and Frame timing
-	app_init(&platform.app)
-	last_frame_counter := time_now()
-	app_running, global_pause := true, false
-	dt: f32
+	platform_init_ended_at := time_now()
+	platform.runtime_stats.platform_init_ms = elapsed_from_ms(platform_init_at, platform_init_ended_at)
 
+	// Main loop and Frame timing
+	// todo(hector) - make these timings be scope based as well, like niice
+	app_init(&platform.app)
 
 	// make dummy frame data to test the renderer
 	pixels := make([]byte, WindowWidth * WindowHeight * 4)
@@ -114,24 +152,32 @@ main :: proc() {
 		for col := 0; col < WindowWidth; col += 1 {
 			i := (row * WindowWidth + col) * 4
 			pixels[i + 0] = 255
-			pixels[i + 1] = 0
-			pixels[i + 2] = 0
+			pixels[i + 1] = 100
+			pixels[i + 2] = 68
 			pixels[i + 3] = 255
 		}
 	}
 
+	app_init_ended_at := time_now()
+	platform.runtime_stats.app_init_ms = elapsed_from_ms(platform_init_ended_at, app_init_ended_at)
+
+	last_frame_counter := app_init_ended_at
+	app_running, global_pause := true, false
+	dt: f64
 	for app_running {
 
 		// Measure frame time
-		now := time_now()
-		dt = elapsed(last_frame_counter)
-		last_frame_counter = now
+		{
+			now := time_now()
+			dt = elapsed_from(last_frame_counter, now)
+			last_frame_counter = now
+		}
 
-		platform.debug_timing.frame_ms = dt * 1000.0
-		platform.debug_timing.fps = dt > 0 ? 1.0 / dt : 0
-
+		platform.runtime_stats.prev_frame_ms = dt * 1000.0
+		platform.runtime_stats.fps = dt > 0 ? 1.0 / dt : 0
 
 		// Process input events
+		app_input_started_at := time_now()
 		reset_app_input(&platform.app_input)
 		event: sdl.Event
 		for sdl.PollEvent(&event) {
@@ -184,6 +230,8 @@ main :: proc() {
 				}
 			}
 		}
+		frame_input_ended_at := time_now()
+		platform.runtime_stats.frame_input_ms = elapsed_from_ms(app_input_started_at, frame_input_ended_at)
 
 		if button_is_pressed(platform.app_input.buttons[.GlobalGamePause]) {
 			global_pause = !global_pause
@@ -200,11 +248,15 @@ main :: proc() {
 				platform.gpu_renderer.pixel_width,
 				platform.gpu_renderer.pixel_height,
 			)
-		} else {
-			if is_key_pressed(&platform.app_input, .Cancel) {
-				app_running = false
-			}
 		}
+
+		if global_pause && is_key_pressed(&platform.app_input, .Cancel) {
+			app_running = false
+		}
+
+		frame_update_ended_at := time_now()
+		platform.runtime_stats.frame_update_ms = elapsed_from_ms(frame_input_ended_at, frame_update_ended_at)
+
 
 		if platform.app.debug_mode != previous_debug_mode {
 			assert(
@@ -229,40 +281,54 @@ main :: proc() {
 		sdl.RenderTexture(platform.basic_renderer.renderer, platform.basic_renderer.video_texture, nil, nil)
 		sdl.RenderPresent(platform.basic_renderer.renderer)
 
+		frame_draw_ended_at := time_now()
+		platform.runtime_stats.frame_draw_ms = elapsed_from_ms(frame_update_ended_at, frame_draw_ended_at)
+
 		// Check for arena growth — means our initial sizes were too small
+		permanent_reserved := platform.runtime_stats.permanent_reserved_bytes
+		platform.runtime_stats.permanent_reserved_bytes = permanent_arena.total_reserved
 		if permanent_arena.total_reserved != permanent_reserved {
 			log.warnf(
 				"Permanent arena grew: %s -> %s",
 				format_bytes(permanent_reserved),
 				format_bytes(permanent_arena.total_reserved),
 			)
-			permanent_reserved = permanent_arena.total_reserved
 		}
+
+		scratch_reserved := platform.runtime_stats.scratch_reserved_bytes
+		platform.runtime_stats.scratch_reserved_bytes = scratch_arena.total_reserved
 		if scratch_arena.total_reserved != scratch_reserved {
 			log.warnf(
 				"Scratch arena grew: %s -> %s",
 				format_bytes(scratch_reserved),
 				format_bytes(scratch_arena.total_reserved),
 			)
-			scratch_reserved = scratch_arena.total_reserved
 		}
 
 		// Wipe scratch — everything allocated this frame is gone
 		free_all(context.temp_allocator)
 	}
-
+	platform_close_started_at = time_now()
 }
 
 time_now :: proc() -> u64 {
 	return u64(sdl.GetPerformanceCounter())
 }
 
-elapsed_ms :: proc(start: u64) -> f32 {
+elapsed_ms :: proc(start: u64) -> f64 {
 	return elapsed(start) * 1000.0
 }
 
-elapsed :: proc(start: u64) -> f32 {
-	return f32(sdl.GetPerformanceCounter() - start) / f32(sdl.GetPerformanceFrequency())
+elapsed_from_ms :: proc(start, end: u64) -> f64 {
+	return elapsed_from(start, end) * 1000.0
+}
+
+elapsed :: proc(start: u64) -> f64 {
+	return f64(sdl.GetPerformanceCounter() - start) / platform.clock_freq
+}
+
+elapsed_from :: proc(start, end: u64) -> f64 {
+	return f64(end - start) / platform.clock_freq
 }
 
 format_bytes :: proc(bytes: uint) -> string {
@@ -303,4 +369,39 @@ sdl_log_output_proc :: proc "c" (
 ) {
 	context = (cast(^runtime.Context)userdata)^
 	log.debugf("SDL {} [{}]: {}", category, priority, message)
+}
+
+platform_print_runtime_metrics :: proc(metrics: Runtime_Stats) {
+	fmt.println("\nRuntime stats (last sample; CPU timings, not GPU timings)")
+	fields := reflect.struct_fields_zipped(Runtime_Stats)
+	for field, i in fields {
+		name := field.name
+		value := reflect.struct_field_value(metrics, field)
+		text: string
+		switch v in value {
+		case f64:
+			if strings.has_suffix(name, "_ms") {
+				text = fmt.tprintf("%.3f ms", v)
+			} else if strings.has_suffix(name, "_seconds") {
+				text = fmt.tprintf("%.3f s", v)
+			} else {
+				text = fmt.tprintf("%.3f", v)
+			}
+		case uint:
+			if strings.has_suffix(name, "_bytes") {
+				text = format_bytes(v)
+			} else {
+				text = fmt.tprintf("%v", v)
+			}
+		case:
+			text = fmt.tprintf("%v", value)
+		}
+		fmt.printf("%-30s %12s", name, text)
+		if i % 2 == 1 || i == len(fields) - 1 {
+			fmt.println()
+		} else {
+			fmt.print(" | ")
+		}
+	}
+	return
 }
