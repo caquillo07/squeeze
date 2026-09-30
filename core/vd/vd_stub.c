@@ -2,6 +2,6 @@
 #include <stdio.h>
 
 void vd_hello(void) {
-    printf("[VD] backend unavailable (stub build)\n");
-    return;
+	printf("[VD] backend unavailable (stub build)\n");
+	return;
 }

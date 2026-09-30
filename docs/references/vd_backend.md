@@ -6,7 +6,7 @@ See [vendored source/build notes](../../ext/ffmpeg.README.md).
 
 ## Contract
 
-Apps depend on `core/shim/vd.h` and link one artifact: `libvd.a`.
+Apps depend on `core/vd/vd.h` and link one artifact: `libvd.a`.
 FFmpeg and platform codec APIs are private implementation details. Keep complexity
 at the lowest scope that needs it; neither Odin nor Swift knows which decoder is active.
 
@@ -23,14 +23,15 @@ Exact signatures are deferred until the first-frame implementation.
 
 ## Compile-Time Selection
 
-Planned layout:
+Layout:
 
 ```text
-core/shim/
+core/vd/
     vd.h              backend-neutral public API
     vd.c              backend selection; only compilation entry point
     vd_ffmpeg.c       private FFmpeg implementation
     vd_stub.c         backend-unavailable implementation
+    tests/            public and backend-private smoke tests
 ```
 
 ```c
@@ -98,8 +99,49 @@ build/deps/ffmpeg/install/     generated headers and static libraries
 build/desktop/libvd.a          app-facing artifact
 ```
 
-`just build-ffmpeg` builds incrementally. Ordinary Odin changes
-must not trigger a clean FFmpeg rebuild. The stub build must skip FFmpeg entirely.
+`just build-ffmpeg` builds the dependency explicitly and incrementally. Normal VD,
+test, and desktop builds never build FFmpeg; missing prebuilt artifacts produce an
+error telling the user to build it. Stub builds need no FFmpeg artifacts.
+
+The root `CMakeLists.txt` owns the C23 unity build, strict C flags, archive merging,
+and all applicable tests. `just build-shim` publishes the archive to
+`build/desktop/libvd.a`; `just smoke-vd` builds/runs tests under `build/vd/debug/`
+or `build/vd/release/`.
+
+For CLion, open the root CMake project. Backend implementation files are listed as
+header-only sources for IDE visibility, but compiled only through `vd.c`. The
+compilation database includes all applicable tests even when building only the
+archive. Each configuration has its database in its build directory; CLion uses
+the CMake project directly.
+Building different targets does not change its contents; selecting a different
+backend does. Generated databases contain machine-local paths and are ignored.
+
+`CMakePresets.json` is the shared configuration. A hidden base selects Makefiles,
+`/usr/bin/clang`, `~/.local/bin/make`, the macOS SDK, arm64, and FFmpeg. `vd-debug`
+and `vd-release` select Debug and Release in `build/vd/debug/` and
+`build/vd/release/`. Each has named configure/build/test presets with descriptions.
+`just` uses them. Both configurations keep their binaries and caches.
+
+`CMakeLists.txt` explicitly owns the configuration flags: Debug `-g -O0`, Release
+`-O3 -g0 -DNDEBUG`, replacing CMake's compiler-module defaults. Tests keep
+assertions enabled in both configurations. Use `just vd_config=release smoke-vd`
+or `just vd_config=release build-shim`; the default is Debug. This selector controls
+C only, not Odin compilation. Switching configurations reuses that configuration's
+existing outputs rather than overwriting the other configuration.
+
+In CLion, select keg's CMake executable and the imported Debug or Release preset.
+Both configurations can be enabled, but select only one pairing per configuration.
+Disable old independently configured profiles; do not override the preset's toolchain,
+generator, or output directory. Terminal and IDE share each configuration's cache;
+never run their builds/configures concurrently in the same directory. Use modern GNU Make (verified with
+4.4.1); macOS's `/usr/bin/make` 3.81 ignores subsecond dependency timestamps and
+can silently reuse stale objects during rapid changes.
+
+`just vd_backend=stub smoke-vd` explicitly overrides the backend in the same cache.
+Keep CLion idle during that experiment. The next default configure restores FFmpeg;
+reload the IDE project afterwards. No second backend profile/cache is created.
+Only `just build-shim` publishes a copy to `build/desktop/libvd.a` for Odin; that
+path holds the last requested configuration. Do not publish both concurrently.
 SDL is still an existing system dependency until separately vendored; this design
 covers the VD boundary, not a claim that the whole application is self-contained yet.
 

@@ -39,3 +39,4 @@ else
 fi
 make -j"${FFMPEG_JOBS:-8}"
 make install
+printf 'FFmpeg static libraries: %s/lib/\n' "$prefix"

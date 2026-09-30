@@ -21,9 +21,11 @@ squeeze/
 
 ```
 core/
-├── shim/
-│   ├── ffmpeg_shim.c/h     clean API over libav* (decode, probe, mux/demux)
-│   └── vt_shim.c/h         VideoToolbox wrapper (if Odin foreign isn't clean enough)
+├── vd/                    backend-neutral C library
+│   ├── vd.c/h             public API + unity compilation entry point
+│   ├── vd_ffmpeg.c        private FFmpeg backend
+│   ├── vd_stub.c          no-decoder backend
+│   └── tests/             VD-owned smoke tests
 ├── thumb_cache.c/h          LRU, fixed capacity, explicit memory budget
 ├── compress.odin            dispatch interface (function pointers)
 ├── compress_ffmpeg.odin     desktop backend (links libav*)
@@ -122,15 +124,19 @@ Desktop and core import from `ext/` via relative paths. iOS ignores `ext/` — i
 
 ### Desktop + Core
 
-Justfile wrapping `odin build` and `cc`/`clang`:
+Justfile wrapping the C-only CMake project and `odin build`:
 
-- `just build` — build desktop app (compiles core C shim + Odin, links SDL3 + ffmpeg)
-- `just run` — build and run
-- `just build-ios-shim` — compile core C files for arm64-iphoneos (if ever needed separately)
+- `just build-ffmpeg` — explicit, occasional dependency build
+- `just build-shim` — unity-compile VD and merge prebuilt dependency archives
+- `just smoke-vd` — build and run VD-owned smoke tests
+- `just build-desktop` / `just run-desktop` — build / run the desktop app
+
+Normal builds never rebuild FFmpeg. CLion opens the root CMake project; all C tests
+remain configured regardless of which build target is selected.
 
 ### iOS
 
-Xcode project in `ios/`. Core's C files (`core/shim/*.c`, `core/thumb_cache.c`) are added directly to the Xcode project as source files. Xcode compiles them with the correct target triple, SDK, and flags for iOS.
+Xcode project in `ios/`. Core's C files (`core/vd/vd.c`, and future `core/thumb_cache.c`) are added directly to the Xcode project as source files. Xcode compiles them with the correct target triple, SDK, and flags for iOS.
 
 The same C source compiles twice — once by the justfile for desktop (arm64-macos, linking vendored ffmpeg) and once by Xcode for iOS (arm64-iphoneos, linking system frameworks). Same source, different targets. This is correct.
 

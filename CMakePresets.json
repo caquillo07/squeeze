@@ -1,0 +1,80 @@
+{
+	"version": 3,
+	"cmakeMinimumRequired": {
+		"major": 3,
+		"minor": 21,
+		"patch": 0
+	},
+	"configurePresets": [
+		{
+			"name": "vd-base",
+			"hidden": true,
+			"generator": "Unix Makefiles",
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "/usr/bin/clang",
+				"CMAKE_MAKE_PROGRAM": "$penv{HOME}/.local/bin/make",
+				"CMAKE_OSX_ARCHITECTURES": "arm64",
+				"CMAKE_OSX_SYSROOT": "macosx",
+				"VD_BACKEND": "ffmpeg",
+				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/install"
+			}
+		},
+		{
+			"name": "vd-debug",
+			"inherits": "vd-base",
+			"displayName": "VD Debug",
+			"description": "Configure VD with -g -O0 in build/vd/debug, shared by terminal and CLion.",
+			"binaryDir": "${sourceDir}/build/vd/debug",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		},
+		{
+			"name": "vd-release",
+			"inherits": "vd-base",
+			"displayName": "VD Release",
+			"description": "Configure VD with -O3 -g0 -DNDEBUG in build/vd/release, shared by terminal and CLion.",
+			"binaryDir": "${sourceDir}/build/vd/release",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release"
+			}
+		}
+	],
+	"buildPresets": [
+		{
+			"name": "vd-debug",
+			"displayName": "Build VD Debug",
+			"description": "Build the debug unity library and smoke tests using eight parallel jobs.",
+			"configurePreset": "vd-debug",
+			"jobs": 8
+		},
+		{
+			"name": "vd-release",
+			"inherits": "vd-debug",
+			"displayName": "Build VD Release",
+			"description": "Build the optimized unity library and smoke tests using eight parallel jobs.",
+			"configurePreset": "vd-release"
+		}
+	],
+	"testPresets": [
+		{
+			"name": "vd-debug",
+			"displayName": "Test VD Debug",
+			"description": "Run debug smoke tests, show failures, and fail if no tests are found.",
+			"configurePreset": "vd-debug",
+			"output": {
+				"outputOnFailure": true
+			},
+			"execution": {
+				"noTestsAction": "error"
+			}
+		},
+		{
+			"name": "vd-release",
+			"inherits": "vd-debug",
+			"displayName": "Test VD Release",
+			"description": "Run release smoke tests with assertions retained; show failures and fail if none are found.",
+			"configurePreset": "vd-release"
+		}
+	]
+}

@@ -81,7 +81,7 @@
 		C4C14CBE2FE4A1A600302452 = {
 			isa = PBXGroup;
 			children = (
-				C4C14D1C2FE4EE3F00302452 /* shim */,
+				C4C14D1C2FE4EE3F00302452 /* vd */,
 				C4C14CC92FE4A1A600302452 /* Squeeze */,
 				C4C14CD72FE4A1A700302452 /* SqueezeTests */,
 				C4C14CE12FE4A1A700302452 /* SqueezeUITests */,
@@ -99,15 +99,15 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C4C14D1C2FE4EE3F00302452 /* shim */ = {
+		C4C14D1C2FE4EE3F00302452 /* vd */ = {
 			isa = PBXGroup;
 			children = (
 				C4C14D1A2FE4EE3F00302452 /* vd.h */,
 				C4C14D1B2FE4EE3F00302452 /* vd.c */,
 			);
-			name = shim;
-			path = /Users/hector/code/squeeze/core/shim;
-			sourceTree = "<absolute>";
+			name = vd;
+			path = ../../core/vd;
+			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 

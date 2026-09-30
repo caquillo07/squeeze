@@ -5,8 +5,12 @@ ios_project  := "ios/Squeeze/Squeeze.xcodeproj"
 ios_scheme   := "Squeeze"
 ios_bundle   := "com.caquilloapps.Squeeze"
 
-# Override with: just vd_backend=stub build-desktop
-vd_backend := "ffmpeg"
+# Empty uses the preset's backend. Override with: just vd_backend=stub build-desktop
+vd_backend := ""
+# C-only configuration: just vd_config=release smoke-vd
+vd_config := "debug"
+vd_preset := "vd-" + vd_config
+vd_build_dir := "build/vd/" + vd_config
 
 # Default simulators — override with just run-ios ios_device="iPhone 17e"
 ios_device   := "iPhone 17 Pro Max"
@@ -242,47 +246,23 @@ build-core-ios subtarget="iphonesimulator" output_dir="build/ios":
 build-ffmpeg:
     bash scripts/build_ffmpeg.sh
 
-# Build one app-facing archive; backend details stop here
-build-shim:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p build/desktop
-    case "{{vd_backend}}" in
-        ffmpeg)
-            just build-ffmpeg
-            prefix=build/deps/ffmpeg/install
-            clang -Wall -Wextra -Werror -DVD_BACKEND_FFMPEG \
-                -I"$prefix/include" -c core/shim/vd.c -o build/desktop/vd.o
-            libtool -static -o build/desktop/libvd.a build/desktop/vd.o \
-                "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" \
-                "$prefix/lib/libavutil.a" "$prefix/lib/libswscale.a" \
-                "$prefix/lib/libswresample.a"
-            ;;
-        stub)
-            clang -Wall -Wextra -Werror -DVD_BACKEND_STUB \
-                -c core/shim/vd.c -o build/desktop/vd.o
-            rm -f build/desktop/libvd.a
-            ar rcs build/desktop/libvd.a build/desktop/vd.o
-            ;;
-        *)
-            echo "Unknown VD backend: {{vd_backend}} (use ffmpeg or stub)" >&2
-            exit 1
-            ;;
-    esac
+# Configure all C targets; building a subset does not shrink the IDE database
+configure-vd:
+    cmake --preset {{quote(vd_preset)}} {{if vd_backend == "" { "" } else { quote("-DVD_BACKEND=" + vd_backend) }}}
 
-# Link/run through the public API only; no FFmpeg headers or link flags
+# Unity build + archive merge. FFmpeg must already be built.
+build-shim: configure-vd
+    cmake --build --preset {{quote(vd_preset)}} --target vd
+    cmake -E make_directory build/desktop
+    cmake -E copy_if_different {{quote(vd_build_dir + "/libvd.a")}} build/desktop/libvd.a
+    @echo "VD archive: $PWD/build/desktop/libvd.a"
+
+# Build and run all applicable VD tests
 smoke-vd: build-shim
-    #!/usr/bin/env bash
-    set -euo pipefail
-    clang -Wall -Wextra -Werror -Icore/shim tests/vd_smoke.c \
-        build/desktop/libvd.a -o build/desktop/vd-smoke
-    ./build/desktop/vd-smoke
-    if [ "{{vd_backend}}" = ffmpeg ]; then
-        clang -Wall -Wextra -Werror -Ibuild/deps/ffmpeg/install/include \
-            tests/vd_ffmpeg_smoke.c build/desktop/libvd.a \
-            -o build/desktop/vd-ffmpeg-smoke
-        ./build/desktop/vd-ffmpeg-smoke
-    fi
+    cmake --build --preset {{quote(vd_preset)}}
+    ctest --preset {{quote(vd_preset)}}
+    @echo "VD smoke binary: $PWD/{{vd_build_dir}}/vd-smoke"
+    @if [ "{{vd_backend}}" != stub ]; then echo "FFmpeg smoke binary: $PWD/{{vd_build_dir}}/vd-ffmpeg-smoke"; fi
 
 # Compile GLSL shaders to SPIR-V
 build-shaders:
@@ -300,7 +280,7 @@ build-shaders:
         esac
         glslc -fshader-stage="$stage" "$f" -o "build/shaders/${base}.spv"
     done
-    echo "Shaders compiled."
+    echo "Shaders: $PWD/build/shaders/"
 
 # Build desktop app
 build-desktop: build-shim build-shaders
@@ -308,6 +288,7 @@ build-desktop: build-shim build-shaders
     set -euo pipefail
     odinfmt -w desktop/
     odin build desktop/ -out:build/squeeze-desktop -debug
+    echo "Desktop binary: $PWD/build/squeeze-desktop"
 
 # Build and run desktop app
 run-desktop: build-desktop
@@ -331,7 +312,7 @@ build-deps: build-ffmpeg
         -DSDLSHADERCROSS_CLI=OFF \
         -DCMAKE_CXX_FLAGS="-Wno-invalid-specialization"
     cmake --build build/deps/shadercross --config Release -j8
-    echo "Dependencies built."
+    echo "Shadercross library: $PWD/build/deps/shadercross/libSDL3_shadercross.a"
 
 # Format all code
 fmt:
@@ -363,7 +344,13 @@ devices:
     echo "=== Simulators ==="
     xcrun simctl list devices available | grep -E "^-- iOS|    iPhone|    iPad"
 
-# Clean all build artifacts
+# Clean project outputs, retaining expensive dependency builds
 clean:
-    xcodebuild clean -project {{ios_project}} -scheme {{ios_scheme}} 2>/dev/null || true
-    rm -rf build/
+    @if [ -d build ]; then find build -mindepth 1 -maxdepth 1 ! -name deps -exec rm -rf {} +; fi
+    rm -rf cmake-build-*/
+    @echo "Project artifacts removed; build/deps/ preserved."
+
+# Clean everything, including FFmpeg and shadercross
+clean-all:
+    rm -rf build/ cmake-build-*/
+    @echo "All build artifacts removed; dependencies must be rebuilt."

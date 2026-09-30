@@ -15,14 +15,15 @@
 
 ```sh
 just build-ffmpeg                  # incremental dependency build
-just smoke-vd                      # FFmpeg build + merged archive + smoke tests
+just smoke-vd                      # merged archive + smoke tests; FFmpeg must exist
 just vd_backend=stub smoke-vd      # no FFmpeg compilation/linking
 just build-desktop                 # desktop links only libvd.a for VD
 just vd_backend=stub build-desktop
 ```
 
-macOS arm64 only for now. Requires Clang/platform SDK and make; no download or
-package-manager library lookup. `FFMPEG_JOBS` overrides the default four build jobs.
+macOS arm64 only for now. Requires Clang/platform SDK and make; VD additionally
+uses CMake. No downloads or package-manager library lookup. `FFMPEG_JOBS` overrides
+the default eight dependency-build jobs.
 Changing configure flags triggers reconfiguration. Delete `build/deps/ffmpeg/`
 for a clean dependency rebuild after replacing the vendored release/toolchain.
 
