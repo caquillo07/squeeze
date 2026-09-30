@@ -5,6 +5,9 @@ ios_project  := "ios/Squeeze/Squeeze.xcodeproj"
 ios_scheme   := "Squeeze"
 ios_bundle   := "com.caquilloapps.Squeeze"
 
+# Override with: just vd_backend=stub build-desktop
+vd_backend := "ffmpeg"
+
 # Default simulators — override with just run-ios ios_device="iPhone 17e"
 ios_device   := "iPhone 17 Pro Max"
 ipad_device  := "iPad Pro 13-inch (M5)"
@@ -235,13 +238,51 @@ build-core-ios subtarget="iphonesimulator" output_dir="build/ios":
 
 # ── Desktop (Odin + SDL3) ───────────────────
 
-# Build core C shim (vd.c → libvd.a)
+# Build vendored FFmpeg (incremental; no downloads)
+build-ffmpeg:
+    bash scripts/build_ffmpeg.sh
+
+# Build one app-facing archive; backend details stop here
 build-shim:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p build/desktop
-    clang -c core/shim/vd.c -o build/desktop/vd.o
-    ar rcs build/desktop/libvd.a build/desktop/vd.o
+    case "{{vd_backend}}" in
+        ffmpeg)
+            just build-ffmpeg
+            prefix=build/deps/ffmpeg/install
+            clang -Wall -Wextra -Werror -DVD_BACKEND_FFMPEG \
+                -I"$prefix/include" -c core/shim/vd.c -o build/desktop/vd.o
+            libtool -static -o build/desktop/libvd.a build/desktop/vd.o \
+                "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" \
+                "$prefix/lib/libavutil.a" "$prefix/lib/libswscale.a" \
+                "$prefix/lib/libswresample.a"
+            ;;
+        stub)
+            clang -Wall -Wextra -Werror -DVD_BACKEND_STUB \
+                -c core/shim/vd.c -o build/desktop/vd.o
+            rm -f build/desktop/libvd.a
+            ar rcs build/desktop/libvd.a build/desktop/vd.o
+            ;;
+        *)
+            echo "Unknown VD backend: {{vd_backend}} (use ffmpeg or stub)" >&2
+            exit 1
+            ;;
+    esac
+
+# Link/run through the public API only; no FFmpeg headers or link flags
+smoke-vd: build-shim
+    #!/usr/bin/env bash
+    set -euo pipefail
+    clang -Wall -Wextra -Werror -Icore/shim tests/vd_smoke.c \
+        build/desktop/libvd.a -o build/desktop/vd-smoke
+    ./build/desktop/vd-smoke
+    if [ "{{vd_backend}}" = ffmpeg ]; then
+        clang -Wall -Wextra -Werror -Ibuild/deps/ffmpeg/install/include \
+            tests/vd_ffmpeg_smoke.c build/desktop/libvd.a \
+            -o build/desktop/vd-ffmpeg-smoke
+        ./build/desktop/vd-ffmpeg-smoke
+    fi
 
 # Compile GLSL shaders to SPIR-V
 build-shaders:
@@ -277,7 +318,7 @@ run-desktop: build-desktop
 # ── Dependencies ─────────────────────────────
 
 # Build vendored dependencies (run once per machine)
-build-deps:
+build-deps: build-ffmpeg
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Building SDL_gpu_shadercross..."

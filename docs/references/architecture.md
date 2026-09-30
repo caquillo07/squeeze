@@ -136,12 +136,14 @@ The same C source compiles twice — once by the justfile for desktop (arm64-mac
 
 ## Compile-Time Backend Selection
 
-Compression has two backends, selected at compile time:
+VD backend selection and linkage live behind `vd.c/h`, not in Odin. Apps link one
+`libvd.a`, with a backend-neutral API and no FFmpeg types or imports. The initial
+builds select FFmpeg or a backend-unavailable stub at compile time. Runtime dispatch
+is deferred until needed.
 
-- `compress_ffmpeg.odin` — desktop. Links libavcodec/libavformat/etc.
-- `compress_vt.odin` — iOS/macOS. Calls VideoToolbox directly (pure C API).
-
-Both implement the same interface (function pointer table in `compress.odin`). The consumer doesn't know which backend is active.
+See [VD backend and vendored build specification](vd_backend.md) for the agreed
+contract, source layout, archive composition, and dependency/license policy. This
+supersedes the earlier sketch of direct Odin codec backends above.
 
 ## Core Is The Platform Layer (UI Is The Game)
 

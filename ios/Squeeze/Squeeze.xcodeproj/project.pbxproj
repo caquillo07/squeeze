@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C4C14D1E2FE4EE3F00302452 /* vd.c in Sources */ = {isa = PBXBuildFile; fileRef = C4C14D1B2FE4EE3F00302452 /* vd.c */; };
+		C4C14D1E2FE4EE3F00302452 /* vd.c in Sources */ = {isa = PBXBuildFile; fileRef = C4C14D1B2FE4EE3F00302452 /* vd.c */; settings = {COMPILER_FLAGS = "-DVD_BACKEND_STUB"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
