@@ -1,6 +1,16 @@
 # Squeeze — Progress Tracker
 
-## Current Sprint: Monorepo Bootstrap (2026-06-18)
+## Current Work: Desktop Debugging — Next
+
+- Desktop/core only. iOS source and tooling removed on 2026-09-30 to avoid maintaining an inactive target.
+- VD moved to `core/vd/`, with owned tests and a single unity compilation entry point.
+- Vendored FFmpeg 9.0.2 builds statically; applications link only `libvd.a` for decoding dependencies.
+- CMake presets shared by terminal/CLion; Debug/Release outputs are separate, C flags explicit.
+- Modern Make 4.4.1 verified; both configurations' smoke tests pass.
+- Next: Odin → VD source debugging, then debuggable FFmpeg. See `todo.md`.
+- iOS plans are preserved under `docs/sprints/deferred/`; completed sprint history below remains historical.
+
+## Historical: Monorepo Bootstrap (2026-06-18)
 
 ### Phase 1 — Repo Skeleton & Docs (Complete)
 - Directory structure, CLAUDE.md, architecture.md, project_vision.md, coding_style.md
@@ -51,8 +61,11 @@
 - Odin cross-compiles to iOS static lib via Xcode Run Script → `just build-core-ios`
 - Full archive: `docs/sprints/completed/2026-06_monorepo_bootstrap.md`
 
-## Current Sprint: Media Detail View (2026-06-19)
-Photos-style detail view as a dedicated `DetailViewController` — custom transition, pinch-zoom, AVPlayer video, tap-toggle tool chrome (all v1 tools stubbed), pan-driven metadata panel. Stubs the core job API to prove the one-way poll wiring. See `todo.md`.
+## Deferred: Media Detail View (2026-06-19)
+The original iOS detail-view plan is preserved in
+`docs/sprints/deferred/2026-06_media_detail_view.md`. It is not implemented or active.
+The roadmap and architecture notes below record that earlier planning, not the
+current implementation.
 
 ### v1 Roadmap
 - **Alpha** (shareable): gallery + detail view + image compress/convert + video playback/compress/convert + save/share. iOS = all platform APIs, no ffmpeg.

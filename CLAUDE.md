@@ -11,23 +11,21 @@
 - Simple, clear, fast. Not mutually exclusive.
 - Respect memory and CPU. Battery is sacred. Crashes are unacceptable.
 - No singletons. No OOP hierarchies. No premature abstraction.
-- Arenas for C memory. ARC for Swift (iOS shell only). Context allocators for Odin.
+- Arenas for C memory. Context allocators for Odin.
 - YAGNI. Build what's needed, nothing more.
 
 ## Languages (by preference)
 
 - **Odin** — primary language, core logic, desktop app
 - **C** — shims wrapping complex C APIs (ffmpeg, VideoToolbox if needed)
-- **Swift** — iOS shell only (UIKit, PhotoKit, StoreKit, app lifecycle)
 
 ## Monorepo Structure
 
 ```
 squeeze/
-├── core/        — portable C + Odin library (zero platform imports)
-│   └── shim/    — C shims for ffmpeg, VideoToolbox, etc.
+├── core/        — shared C + Odin logic
+│   └── vd/      — backend-neutral C library; unity build + owned tests
 ├── desktop/     — Odin + SDL3 desktop app
-├── ios/         — Swift UIKit iOS app (thin shell over core)
 ├── ext/         — shared vendored dependencies (SDL3, ffmpeg, etc.)
 ├── docs/
 │   ├── references/  — style guide, architecture, vision
@@ -38,9 +36,16 @@ squeeze/
 
 ## Build System
 
-- `justfile` wraps `odin build` and `cc`/`clang` for core and desktop.
-- iOS builds through Xcode. Core C files added directly to the Xcode project.
-- arm64 only (no x86).
+- `justfile` wraps CMake for VD and `odin build` for desktop.
+- CMake presets are shared by terminal and CLion; Debug/Release use separate directories.
+- Dependencies build explicitly; normal project builds never rebuild FFmpeg.
+- Current supported target: macOS arm64. Linux support is planned, not verified.
+
+## Current Scope
+
+Desktop/core only. The iOS app and tooling were removed to avoid maintaining an
+inactive target; source remains in Git history. iOS plans live in
+`docs/sprints/deferred/` and must not be treated as active work.
 
 ## Sprint System
 

@@ -1,7 +1,10 @@
 # Sprint: Compression Pipeline
 
 **Started:** [Date]
-**Status:** Not Started
+**Status:** Deferred (2026-09-30)
+
+The iOS target was removed. This original plan is reference material, not active
+work; compression will be replanned for desktop when needed.
 
 ## Goal
 Compress a video on iOS using VideoToolbox through core, with preset targets. The full loop: pick video in gallery -> configure compression -> encode -> save/share.

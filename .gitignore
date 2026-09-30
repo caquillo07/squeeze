@@ -1,5 +1,3 @@
 /build
 .build/
-*.xcuserstate
-DerivedData/
 .DS_Store

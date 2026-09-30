@@ -8,7 +8,7 @@ See [vendored source/build notes](../../ext/ffmpeg.README.md).
 
 Apps depend on `core/vd/vd.h` and link one artifact: `libvd.a`.
 FFmpeg and platform codec APIs are private implementation details. Keep complexity
-at the lowest scope that needs it; neither Odin nor Swift knows which decoder is active.
+at the lowest scope that needs it; application code does not know which decoder is active.
 
 The public C API will expose:
 - An opaque decoder handle; explicit open/close and ownership.
@@ -47,7 +47,7 @@ core/vd/
 ```
 
 Implementation files are included by `vd.c`, **not compiled independently**.
-Build systems, including Xcode, must not glob them as separate source files.
+Build systems must not glob them as separate source files.
 Both builds export the same public symbols and use the same library name.
 The stub builds without FFmpeg and returns backend-unavailable, never fake success.
 
@@ -59,8 +59,8 @@ added only when a real consumer needs them.
 
 ## One Library Upwards
 
-FFmpeg headers are visible only while compiling the C implementation. Odin foreign
-imports and the Swift bridging header expose only VD's API.
+FFmpeg headers are visible only while compiling the C implementation. Application
+foreign imports expose only VD's API.
 
 For the FFmpeg build, combine the shim object and required FFmpeg archive members
 into a self-contained `libvd.a`. On macOS use `libtool -static`; do not put nested

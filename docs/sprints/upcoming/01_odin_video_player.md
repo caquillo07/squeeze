@@ -7,7 +7,7 @@
 A working video player in the desktop Odin app that matches the C++ video_editor's functionality: video + audio decoding, threaded pipeline, A/V sync, and HUD overlay. Then add the JS scripting overlay system.
 
 ## Context
-The C++ video_editor (at /Users/hector/code/video_editor) is a video player built as a learning project following ffmpeg tutorials. It has video/audio decoding, threaded demux/decode, A/V sync (audio master clock), HUD, and a QuickJS scriptable overlay system with a software rasterizer. We're porting all of this to Odin in the Squeeze desktop app, using the C shim (core/shim/vd.c) for ffmpeg calls.
+The C++ video_editor (at /Users/hector/code/video_editor) is a video player built as a learning project following ffmpeg tutorials. It has video/audio decoding, threaded demux/decode, A/V sync (audio master clock), HUD, and a QuickJS scriptable overlay system with a software rasterizer. We're porting all of this to Odin in the Squeeze desktop app, using the backend-neutral C library (core/vd/vd.c) for ffmpeg calls.
 
 ## What Exists (C++ video_editor)
 - FFmpeg demux + decode (video + audio)
@@ -81,7 +81,7 @@ The C++ video_editor (at /Users/hector/code/video_editor) is a video player buil
 ---
 
 ## Architecture Notes
-- All ffmpeg calls go through core/shim/vd.c — Odin never links ffmpeg directly
+- All ffmpeg calls go through core/vd/vd.c — Odin links only libvd.a, never ffmpeg directly
 - Ring buffers use power-of-2 sizes for fast modulo (idx & (size-1))
 - Audio callback runs on SDL thread — no allocations, no logging in hot path
 - Audio clock accessed cross-thread via atomics (relaxed ordering)

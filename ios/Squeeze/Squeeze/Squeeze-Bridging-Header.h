@@ -1,8 +1,0 @@
-#pragma once
-
-// C shim — Header Search Paths includes $(SRCROOT)/../.. (repo root)
-#include <core/vd/vd.h>
-
-// Odin core (core/squeeze.odin)
-const char* squeeze_version(void);
-int squeeze_add(int a, int b);

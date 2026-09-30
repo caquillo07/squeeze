@@ -1,229 +1,93 @@
 # Architecture — Squeeze
 
-## Monorepo Layout
+## Current Scope
 
-One repo, one commit touches everything. No git submodules.
+Desktop/core only, currently built and verified on macOS arm64. The inactive iOS
+app and tooling were removed to avoid maintenance rot; Git history preserves the
+source. Its plans are deferred under `docs/sprints/deferred/`, not active targets.
+Linux support is planned but not implemented or verified.
 
-```
+## Layout
+
+```text
 squeeze/
-├── core/           shared C + Odin library
-├── desktop/        Odin + SDL3 desktop app
-├── ios/            Swift UIKit iOS app (thin shell)
-├── ext/            shared vendored dependencies
-├── docs/
-├── justfile
-└── todo.md
+├── core/
+│   ├── squeeze.odin        portable exported proof-of-life functions
+│   └── vd/
+│       ├── vd.h            backend-neutral public C API
+│       ├── vd.c            unity compilation entry point
+│       ├── vd_ffmpeg.c     private FFmpeg backend
+│       ├── vd_stub.c       backend-unavailable implementation
+│       └── tests/          VD-owned smoke tests
+├── desktop/                Odin + SDL3 application
+├── ext/                    vendored dependency source
+├── scripts/                explicit dependency-build helpers
+├── CMakeLists.txt          C build, flags, archive merge, tests
+├── CMakePresets.json       shared terminal / CLion configurations
+├── justfile                commands
+└── todo.md                 current work
 ```
 
-## Core — The Portable Heart
+## VD Boundary
 
-`core/` is pure C + Odin. Zero platform imports, zero framework dependencies. This is the code that runs everywhere.
+Application code depends on `vd.h` and one `libvd.a`, not FFmpeg headers, enums,
+or library lists. Backend selection is compile-time. `vd.c` includes the selected
+implementation; backend files are not independently compiled. Odin only sees the
+public C signatures.
 
-```
-core/
-├── vd/                    backend-neutral C library
-│   ├── vd.c/h             public API + unity compilation entry point
-│   ├── vd_ffmpeg.c        private FFmpeg backend
-│   ├── vd_stub.c          no-decoder backend
-│   └── tests/             VD-owned smoke tests
-├── thumb_cache.c/h          LRU, fixed capacity, explicit memory budget
-├── compress.odin            dispatch interface (function pointers)
-├── compress_ffmpeg.odin     desktop backend (links libav*)
-├── compress_vt.odin         iOS/macOS backend (VideoToolbox)
-└── probe.odin               metadata extraction
-```
+FFmpeg objects are merged with the VD unity object into the app-facing static
+archive. Backend-specific system requirements stay in the build integration.
+Portable policy remains separate from private platform/library calls.
 
-### Rules
+See [VD backend specification](vd_backend.md) for the API boundary, ownership,
+vendoring, license policy, and build details. The current API is proof of life;
+opening media and decoding frames are not implemented yet.
 
-- No Swift, no ObjC, no platform frameworks in core.
-- C shim wraps gnarly APIs (ffmpeg structs, etc.) so Odin sees a clean interface.
-- VideoToolbox is a pure C API — try Odin `foreign` bindings first. Fall back to a C shim only if the bindings get ugly.
-- Memory: arenas in C, context allocators in Odin. No scattered malloc/free.
+## Desktop
 
-### The C Shim Pattern
+The desktop app is Odin + SDL3. SDL owns windowing, input, and presentation.
+The current loop displays a dummy pixel buffer through SDL's basic renderer;
+the GPU-renderer implementation is present but not the active rendering path.
+Playback, gallery, processing, and custom UI remain future work.
 
-Complex C libraries (ffmpeg especially) have deeply nested structs, macros, and initialization rituals. Instead of mirroring all of that in Odin bindings, we write a thin C file that:
+Odin uses context allocators; our C code uses arenas/caller-owned storage. Resource
+allocations performed by backend libraries must use their matching cleanup APIs.
 
-1. Includes the library headers
-2. Exposes a flat, clean API of plain functions
-3. Hides the internal structs behind opaque pointers or copies data into simple output structs
+## Dependencies and Build
 
-This is proven in `vdbg_player`'s `vd.c/h`. The shim is ~200-400 lines of C. The Odin side sees ~20 function signatures.
+Vendored FFmpeg source lives in `ext/ffmpeg/`. Its configure/make build is explicit,
+out-of-tree, and independent of ordinary VD or Odin builds. The initial configuration
+has no external codec libraries, GPL/nonfree options, encoders, or network support.
+SDL_gpu_shadercross is also vendored. SDL3 itself is still a system dependency;
+its vendoring is future work, not an already satisfied requirement.
 
-## Desktop — Odin + SDL3
-
-`desktop/` is a pure Odin application using SDL3 for windowing, input, and GPU rendering. It links `core/` as a static library.
-
-- Custom UI built with SDL3 (scroll views, clip rects, etc.)
-- GPU-accelerated rendering with compiled shaders
-- ffmpeg backend at compile time
-- Imports from `ext/` for SDL3 bindings and other shared deps
-
-## iOS — Thin Swift Shell
-
-`ios/` is a UIKit app written in Swift. It exists because Apple's platform APIs (PhotoKit, StoreKit, app lifecycle) require it. Everything else goes through core.
-
-```
-ios/
-├── SqueezeApp.swift              @main entry point (~20 lines)
-├── PhotoLibrary.swift            PhotoKit: permissions, asset enumeration, change observers
-├── GalleryViewController.swift   UIKit collection view, feeds thumbs from core's cache
-├── Squeeze-Bridging-Header.h     exposes core's C API to Swift
-├── Assets.xcassets
-└── Squeeze.xcodeproj
+```sh
+just build-deps                       # explicit dependency builds
+just build-shim                       # Debug VD archive, published for Odin
+just smoke-vd                         # Debug C tests
+just vd_config=release smoke-vd       # Release C tests
+just build-desktop                    # C archive + shaders + Odin app
+just run-desktop
+just clean                            # project outputs; dependencies preserved
+just clean-all                        # all build outputs, including dependencies
 ```
 
-### What stays in Swift
+CMake owns only the C island; Odin compilation stays in `justfile`. CLion and the
+terminal consume the same presets and tools. Debug/Release each have their own
+cache under `build/vd/`; the IDE and terminal share the directory for each configuration.
+Only one build/configure process should use a given directory at a time.
 
-- PhotoKit access (PHAsset enumeration, permissions, change observers)
-- App lifecycle (UIApplicationDelegate)
-- UIKit views (UICollectionView, UIViewController)
-- StoreKit (monetization)
-- System share sheets
+## Future Processing Architecture
 
-### What goes to core
-
-- Thumbnail caching (own LRU in C, not NSCache)
-- Image decoding/encoding
-- Video processing (VideoToolbox, compression)
-- Metadata extraction and probing
-- Any business logic
-
-### Bridge pattern
-
-Swift calls into core through the bridging header. Core's C shim exposes functions like:
-
-```c
-ThumbCache* thumb_cache_create(int capacity, size_t memory_budget);
-void thumb_cache_insert(ThumbCache* cache, const char* key, const uint8_t* pixels, int w, int h);
-const uint8_t* thumb_cache_get(ThumbCache* cache, const char* key, int* w, int* h);
-```
-
-Swift sees these as global C functions. No wrappers needed.
-
-### Why UIKit, not SwiftUI
-
-- UIKit is closer to the metal — `UICollectionView` has prefetch APIs, fine-grained cell control, and proven performance for media grids.
-- SwiftUI's reactive model (body recomputation, diffing) adds overhead and unpredictability we don't want.
-- UIKit view controllers can call C functions directly through the bridging header.
-
-## Shared Dependencies — ext/
-
-`ext/` holds vendored dependencies that may be used by multiple targets:
-
-```
-ext/
-├── sdl3/           SDL3 Odin bindings
-├── ffmpeg/         ffmpeg headers + platform libs
-└── ...
-```
-
-Desktop and core import from `ext/` via relative paths. iOS ignores `ext/` — it uses system frameworks.
-
-## Build
-
-### Desktop + Core
-
-Justfile wrapping the C-only CMake project and `odin build`:
-
-- `just build-ffmpeg` — explicit, occasional dependency build
-- `just build-shim` — unity-compile VD and merge prebuilt dependency archives
-- `just smoke-vd` — build and run VD-owned smoke tests
-- `just build-desktop` / `just run-desktop` — build / run the desktop app
-
-Normal builds never rebuild FFmpeg. CLion opens the root CMake project; all C tests
-remain configured regardless of which build target is selected.
-
-### iOS
-
-Xcode project in `ios/`. Core's C files (`core/vd/vd.c`, and future `core/thumb_cache.c`) are added directly to the Xcode project as source files. Xcode compiles them with the correct target triple, SDK, and flags for iOS.
-
-The same C source compiles twice — once by the justfile for desktop (arm64-macos, linking vendored ffmpeg) and once by Xcode for iOS (arm64-iphoneos, linking system frameworks). Same source, different targets. This is correct.
-
-## Compile-Time Backend Selection
-
-VD backend selection and linkage live behind `vd.c/h`, not in Odin. Apps link one
-`libvd.a`, with a backend-neutral API and no FFmpeg types or imports. The initial
-builds select FFmpeg or a backend-unavailable stub at compile time. Runtime dispatch
-is deferred until needed.
-
-See [VD backend and vendored build specification](vd_backend.md) for the agreed
-contract, source layout, archive composition, and dependency/license policy. This
-supersedes the earlier sketch of direct Odin codec backends above.
-
-## Core Is The Platform Layer (UI Is The Game)
-
-Handmade Hero split: the **UI is the game**, the **core is the platform layer**. The UI expresses *intent* ("convert this HEIC to JPEG", "compress to ~10 MB") and knows nothing about *how*. Core owns every decision — target-size→bitrate math, format selection, preset definitions, quality fallbacks, validation — and calls whatever's best on the current OS:
-
-```
-core: convert(asset, .heic, .jpeg)        ← one call site, ALL logic here
-  when Darwin    → ImageIO / VideoToolbox  (C/CoreFoundation, via shim)
-  when Linux/Win → ffmpeg / imagemagick / whatever is fastest
-```
-
-Why: **if Swift decides anything, that decision is stranded on iOS and desktop has to reimplement it.** Push it all into core and both frontends stay dumb — they render and relay intent, nothing more.
-
-This works because the Apple codec APIs are **C-callable**: VideoToolbox is pure C, ImageIO is C/CF. So the shim is real C that core dispatches into — not Swift. (AVFoundation — `AVPlayer`, `AVAssetExportSession` — is Obj-C, so it stays in the UI layer for *playback only*, which is presentation anyway. Video *compression* uses VideoToolbox to keep the logic in core.)
-
-### The one unavoidable platform glue
-
-Data *access* is Apple-specific — PhotoKit/`PHAsset` is an Apple concept. So Swift always does a thin bit: fetch the asset's bytes/URL, hand them to core, write the result back to the library. That's *plumbing, not logic* — no decisions, just "here are the bytes" / "save these bytes." The line: **data access & permissions = thin platform glue; everything else = core.**
-
-## Async — The Job System
-
-Long-running work (compression, conversion) is async. Core owns the **job lifecycle** — start, progress, cancel, done — same as it owns the logic.
-
-```c
-typedef uint64_t Job_Id;
-typedef enum { JOB_QUEUED, JOB_RUNNING, JOB_DONE, JOB_FAILED, JOB_CANCELLED } Job_State;
-typedef struct { Job_State state; float progress; int error_code; /* result */ } Job_Status;
-
-Job_Id     squeeze_submit_convert(const char* src, int from_fmt, int to_fmt);
-Job_Status squeeze_poll(Job_Id id);   // pure read, cheap, called every frame
-void       squeeze_cancel(Job_Id id);
-```
-
-A **job is a value with an id**, and status is **per-job** (never global). Jobs go into a queue; **one worker thread drains it today.** Bulk editing later = bump the worker count from 1 to N — nothing else changes, because status was never global and callers already poll by id. The corner that traps you is a single-job mental model (global status vars, no job identity), *not* the worker count. Addressable jobs + a queue is the cheap prep that leaves the door open with zero speculative machinery.
-
-Concurrency primitives available from C on Apple platforms: pthreads (portable), C11 atomics (`<stdatomic.h>`), GCD/libdispatch (C API), `os_unfair_lock`. Swift's `async/await`/actors are **not** C-callable, so they never appear in core. Core owns a portable thread/job model (Odin `core:thread` + `core:sync`); GCD only shows up at the Apple codec boundary and is absorbed by the shim.
-
-## One-Way Calls (UI Polls, Core Never Calls Up)
-
-**The UI polls core once per frame. Core never calls back into the UI.** Callbacks from platform codecs (e.g. VideoToolbox firing on a GCD queue) land in the *shim* — below the UI boundary — write into the job's status, and stop there. The game is only ever *pulled from*, never *called into*.
-
-Why: a one-way data flow makes the business logic a pure function of state you can test by calling it and reading the result — no mock army reconstructing the logic, no callback spaghetti.
-
-- **Desktop** polls in its existing frame loop for free.
-- **iOS** drives polling with a `CADisplayLink` (the frame tick), alive *only while a job runs* — spin up on submit, invalidate on terminal state. Idle = no polling = battery stays sacred.
-
-```odin
-// desktop — same poll(), driven by the native loop
-for app_running {
-    status := squeeze_poll(job_id)
-    draw_progress(status.progress)
-}
-```
-
-The poll fields live directly on the owning view controller (no monitor class — see the flatten-ownership rule in coding_style). The controller's deterministic lifecycle (`viewWillDisappear`) tears down the `CADisplayLink`, which is exactly why no weak-proxy ceremony is needed.
+UI relays intent and presents results; core owns processing policy and backend work.
+The planned job API uses addressable jobs with submit/poll/cancel. Desktop polls
+from its frame loop; core never calls up into the UI. Jobs, queues, workers,
+thumbnail caching, compression, and probing are design plans, not current code.
 
 ## Data Flow
 
-```
-[PhotoKit / filesystem]
-        │
-        ▼
-  [Swift shell / Odin app]   ← platform-specific asset access
-        │
-        ▼
-    [core C API]              ← bridging header / foreign import
-        │
-        ├── thumb_cache       ← LRU cache, pixel buffers
-        ├── probe             ← metadata extraction
-        └── compress          ← encode pipeline (ffmpeg or VT backend)
-        │
-        ▼
-  [output file / pixel data]
-        │
-        ▼
-  [UI renders result]         ← SDL3 texture / UIKit image view
+```text
+filesystem → Odin application → VD C API → private backend
+                                  │
+                                  └→ pixels/status → SDL presentation
 ```

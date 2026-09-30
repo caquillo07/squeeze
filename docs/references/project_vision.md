@@ -8,14 +8,22 @@ The app market is segmented into two extremes. Easy-to-use tools are too simplis
 
 Squeeze sits in the gap: powerful enough for pros, approachable enough for your mom.
 
+## Current Focus
+
+Desktop/core only. The inactive iOS app and tooling were removed on 2026-09-30 to
+avoid maintaining a target we are not working on. The mobile product vision below
+is deferred, not an existing app or an active delivery plan.
+
 ## What Is Squeeze
 
-A unified media toolkit that runs everywhere:
+A media toolkit intended to run across platforms:
 
-- **Squeeze for iOS** — the Photos app Apple should have shipped. Gallery-first navigation, file sizes on every thumbnail, contextual actions (compress, convert, resize, strip metadata). UIKit shell over a portable core.
+- **Squeeze for iOS (deferred)** — the Photos app Apple should have shipped. Gallery-first navigation, file sizes on every thumbnail, contextual actions (compress, convert, resize, strip metadata). UIKit shell over a portable core.
 - **Squeeze for Desktop** — a video debugging and processing tool. Think VLC meets ffprobe, but friendlier. Odin + SDL3, custom UI, same portable core.
 
-Both apps share `core/` — a portable C + Odin library that handles thumbnail caching, video probing, compression, and metadata extraction. Write once, use everywhere.
+The desktop app uses `core/`; future frontends can share its portable policy and
+backend-neutral APIs. Thumbnail caching, probing, compression, and metadata
+extraction are planned features, not implemented library capabilities yet.
 
 ## Philosophy
 
@@ -31,7 +39,7 @@ Both apps share `core/` — a portable C + Odin library that handles thumbnail c
 
 Squeeze = compressing video into something smaller. The logo is a lemon/lime. The name is short, memorable, and works as a verb ("just squeeze it and send").
 
-## Product: iOS App
+## Deferred Product: iOS App
 
 ### Navigation: Browse -> Detail -> Action
 
@@ -71,7 +79,7 @@ The desktop app (formerly "vdbg") started as a video debugger for professionals 
 
 1. **Odin** — primary. Core logic, desktop app, anywhere we can.
 2. **C** — shims wrapping complex APIs (ffmpeg). We're not afraid of C.
-3. **Swift** — iOS shell only. UIKit, PhotoKit, StoreKit. Minimal surface area.
+3. **Swift (deferred)** — would be used only for a future iOS shell.
 
 ### Why Odin over Swift for core
 
@@ -93,10 +101,9 @@ Proven in `vdbg_player`'s `vd.c/h`.
 
 ### Compile-Time Backends
 
-Compression dispatches through function pointers. Backend selected at compile time:
-
-- Desktop: `compress_ffmpeg.odin` (links libav*)
-- iOS/macOS: `compress_vt.odin` (VideoToolbox, pure C API)
+VD selects its backend inside the C unity build. Odin imports the public API and
+links one `libvd.a`; FFmpeg stays private. Native backends and compression APIs
+are future work. See `vd_backend.md` for the current boundary.
 
 ## Future Roadmap
 

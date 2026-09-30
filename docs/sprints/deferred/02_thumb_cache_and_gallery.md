@@ -1,7 +1,10 @@
 # Sprint: Odin Thumb Cache
 
 **Started:** [Date]
-**Status:** Not Started
+**Status:** Deferred (2026-09-30)
+
+The iOS target was removed. This original plan is reference material, not active
+work; its gallery references describe the former app.
 
 ## Goal
 Replace NSCache in the iOS gallery with an Odin-implemented LRU thumb cache in core/. Thumbnails cached and served from shared Odin code. Swift just displays the pixel data.

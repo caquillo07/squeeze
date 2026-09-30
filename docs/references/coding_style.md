@@ -92,15 +92,6 @@ Last priority — because the rules above give you 80% for free. The remaining 2
 - **Crashes are unacceptable.** Null pointer dereferences, use-after-free, double-free, buffer overruns — these don't happen when memory is statically bounded and arena-managed. That's the whole point.
 - If you're reaching for `malloc`, stop and think about which arena this should come from.
 
-### Swift (iOS Shell Only — ARC + Manual Pools)
-
-- ARC handles the common case. Don't fight it.
-- Use `@autoreleasepool` blocks in tight loops and batch processing to keep memory pressure under control.
-- Never allocate in a hot path if you can allocate once and reuse.
-- Watch for retain cycles in closures — use `[weak self]` or `[unowned self]` when capturing `self` in escaping closures.
-- Prefer value types (structs). They live on the stack when possible — no heap allocation, no refcounting overhead.
-- When in doubt, use Instruments Allocations to check.
-
 ---
 
 ## Crash Prevention
@@ -110,7 +101,6 @@ Crashes are **never acceptable** in shipped code. Period.
 - Validate all external input at system boundaries. Trust nothing from outside.
 - Internal code paths should be structured so invalid states are unrepresentable.
 - Use arenas and static allocation to eliminate memory-related crashes entirely.
-- In Swift: no force-unwraps (`!`) outside of tests and `IBOutlet`s. Handle every optional.
 - In C: bounds-check array access in debug builds. Use arena limits to catch overflows.
 - In Odin: bounds checking is on by default. Leave it on in debug. Use `#no_bounds_check` only in measured hot paths.
 - Prefer returning error values over `assert`/`abort` in release builds.
@@ -123,7 +113,7 @@ Crashes are **never acceptable** in shipped code. Period.
 - Structs are data. Functions transform data. That's it.
 - No OOP hierarchies. No class inheritance trees. No "AbstractMediaProcessorFactory".
 - Arrays of structs over linked lists. Contiguous memory wins.
-- Prefer value types (structs) over reference types (classes) in Swift.
+- Prefer plain value data: Odin and C structs.
 - No singletons. Pass dependencies explicitly. If everything needs it, thread it through.
 - Think about how the data flows through the system, not about object relationships.
 
@@ -132,7 +122,7 @@ Crashes are **never acceptable** in shipped code. Period.
 ## Architecture Rules
 
 - **No singletons.** Global mutable state is a bug waiting to happen. Pass what you need.
-- **Prefer value types.** Odin structs, C structs, Swift structs. Classes only when you genuinely need reference semantics (iOS UIKit).
+- **Prefer value types.** Odin structs and C structs.
 - **Flat over nested.** Shallow module trees. If your folder structure is 5 levels deep, something went wrong.
 - **Delete dead code.** Don't comment it out. Git remembers.
 
@@ -189,19 +179,6 @@ When reviewing (matches `/review` command):
 - Use `static` for file-scoped functions and variables.
 - Prefer stack allocation over arena allocation when lifetimes are lexical.
 - Bounds-check in debug builds. Arena limits catch overflows.
-
-### Swift (iOS shell only)
-
-- Prefer `struct` over `class`.
-- Use `enum` with associated values over class hierarchies.
-- Avoid `Any` and `AnyObject` — be explicit about types.
-- Use `let` by default. `var` only when mutation is required.
-- No force-unwraps (`!`) outside of tests and `IBOutlet`s. Handle optionals properly.
-- Keep closures short. If a closure is more than ~10 lines, extract it to a function.
-- `guard` for early exits. No deep nesting.
-- Always use explicit `self` when referencing class members inside methods.
-- Always write explicit `return` statements. No implicit returns.
-- Use `@autoreleasepool` in loops that create many temporary objects.
 
 ---
 
