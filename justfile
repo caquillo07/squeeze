@@ -3,7 +3,7 @@
 
 # Empty uses the preset's backend. Override with: just vd_backend=stub build-desktop
 vd_backend := ""
-# C-only configuration: just vd_config=release smoke-vd
+# C/FFmpeg configuration (not Odin): just vd_config=release smoke-vd
 vd_config := "debug"
 vd_preset := "vd-" + vd_config
 vd_build_dir := "build/vd/" + vd_config
@@ -16,9 +16,9 @@ default:
 
 # ── Desktop (Odin + SDL3) ───────────────────
 
-# Build vendored FFmpeg (incremental; no downloads)
+# Build matching vendored FFmpeg (explicit, incremental; no downloads)
 build-ffmpeg:
-    bash scripts/build_ffmpeg.sh
+    bash scripts/build_ffmpeg.sh {{quote(vd_config)}}
 
 # Configure all C targets; building a subset does not shrink the IDE database
 configure-vd:

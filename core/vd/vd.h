@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-void vd_hello(void);
+void vd_hello();
 
 #ifdef __cplusplus
 }

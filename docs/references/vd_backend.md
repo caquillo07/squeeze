@@ -93,13 +93,18 @@ Platform SDK facilities are allowed explicitly.
 Build out-of-tree:
 
 ```text
-ext/ffmpeg/                    committed source
-build/deps/ffmpeg/             configure/build output
-build/deps/ffmpeg/install/     generated headers and static libraries
-build/desktop/libvd.a          app-facing artifact
+ext/ffmpeg/                            committed source
+build/deps/ffmpeg/debug/                Debug configure/build output
+build/deps/ffmpeg/debug/install/        Debug headers and static libraries
+build/deps/ffmpeg/release/              Release configure/build output
+build/deps/ffmpeg/release/install/      Release headers and static libraries
+build/desktop/libvd.a                  app-facing artifact
 ```
 
-`just build-ffmpeg` builds the dependency explicitly and incrementally. Normal VD,
+`just build-ffmpeg` builds Debug explicitly and incrementally;
+`just vd_config=release build-ffmpeg` builds Release. The matching VD preset selects
+the corresponding prebuilt installation. Debug retains `-g3 -O0`, frame pointers,
+and unstripped symbols; Release uses `-O3` without debug information. Normal VD,
 test, and desktop builds never build FFmpeg; missing prebuilt artifacts produce an
 error telling the user to build it. Stub builds need no FFmpeg artifacts.
 
@@ -126,7 +131,7 @@ and `vd-release` select Debug and Release in `build/vd/debug/` and
 `-O3 -g0 -DNDEBUG`, replacing CMake's compiler-module defaults. Tests keep
 assertions enabled in both configurations. Use `just vd_config=release smoke-vd`
 or `just vd_config=release build-shim`; the default is Debug. This selector controls
-C only, not Odin compilation. Switching configurations reuses that configuration's
+C and FFmpeg only, not Odin compilation. Switching configurations reuses that configuration's
 existing outputs rather than overwriting the other configuration.
 
 In CLion, select keg's CMake executable and the imported Debug or Release preset.
@@ -144,6 +149,8 @@ Only `just build-shim` publishes a copy to `build/desktop/libvd.a` for Odin; tha
 path holds the last requested configuration. Do not publish both concurrently.
 SDL is still an existing system dependency until separately vendored; this design
 covers the VD boundary, not a claim that the whole application is self-contained yet.
+
+For Odin → VD → FFmpeg debugging, see [desktop debugger setup](desktop_debugging.md).
 
 ## First Milestone
 

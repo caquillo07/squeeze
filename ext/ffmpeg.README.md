@@ -14,18 +14,29 @@
 ## Build
 
 ```sh
-just build-ffmpeg                  # incremental dependency build
+just build-ffmpeg                  # explicit incremental Debug dependency build
+just vd_config=release build-ffmpeg # explicit incremental Release dependency build
 just smoke-vd                      # merged archive + smoke tests; FFmpeg must exist
 just vd_backend=stub smoke-vd      # no FFmpeg compilation/linking
 just build-desktop                 # desktop links only libvd.a for VD
 just vd_backend=stub build-desktop
 ```
 
-macOS arm64 only for now. Requires Clang/platform SDK and make; VD additionally
-uses CMake. No downloads or package-manager library lookup. `FFMPEG_JOBS` overrides
-the default eight dependency-build jobs.
-Changing configure flags triggers reconfiguration. Delete `build/deps/ffmpeg/`
-for a clean dependency rebuild after replacing the vendored release/toolchain.
+macOS arm64 only for now. Uses `/usr/bin/clang`, the platform SDK, and modern GNU
+Make at `~/.local/bin/make`; VD additionally uses CMake. No downloads or
+package-manager library lookup. `FFMPEG_JOBS` overrides the default eight jobs.
+
+Debug and Release build/install separately under `build/deps/ffmpeg/debug/` and
+`build/deps/ffmpeg/release/`. Debug uses `-g3 -O0`, retains frame pointers, disables
+compiler optimizations and stripping. Release uses `-O3` without debug information.
+The corresponding VD preset selects that configuration's `install/` directory.
+Normal project builds never compile FFmpeg. The `vd_config` selector controls C
+and FFmpeg, not Odin compilation.
+
+Changing configure flags triggers reconfiguration. Delete the affected dependency
+configuration directory for a clean rebuild after replacing the vendored
+release/toolchain. The former `build/deps/ffmpeg/install/` is no longer consumed.
+See [desktop debugger setup](../docs/references/desktop_debugging.md).
 
 The minimal configuration enables local MP4/MOV demuxing, H.264 decoding/parsing,
 and the five libraries (`avformat`, `avcodec`, `avutil`, `swscale`, `swresample`).

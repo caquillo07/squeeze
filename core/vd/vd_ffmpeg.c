@@ -6,7 +6,7 @@
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 
-void vd_hello(void) {
+void vd_hello() {
 	printf("[VD] FFmpeg %s (%s)\n", av_version_info(), avutil_license());
 	printf(
 		"[VD] avformat=%u avcodec=%u avutil=%u swscale=%u swresample=%u\n",
@@ -16,5 +16,4 @@ void vd_hello(void) {
 		swscale_version(),
 		swresample_version()
 	);
-	return;
 }

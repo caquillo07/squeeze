@@ -15,8 +15,7 @@
 				"CMAKE_MAKE_PROGRAM": "$penv{HOME}/.local/bin/make",
 				"CMAKE_OSX_ARCHITECTURES": "arm64",
 				"CMAKE_OSX_SYSROOT": "macosx",
-				"VD_BACKEND": "ffmpeg",
-				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/install"
+				"VD_BACKEND": "ffmpeg"
 			}
 		},
 		{
@@ -26,7 +25,8 @@
 			"description": "Configure VD with -g -O0 in build/vd/debug, shared by terminal and CLion.",
 			"binaryDir": "${sourceDir}/build/vd/debug",
 			"cacheVariables": {
-				"CMAKE_BUILD_TYPE": "Debug"
+				"CMAKE_BUILD_TYPE": "Debug",
+				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/debug/install"
 			}
 		},
 		{
@@ -36,7 +36,8 @@
 			"description": "Configure VD with -O3 -g0 -DNDEBUG in build/vd/release, shared by terminal and CLion.",
 			"binaryDir": "${sourceDir}/build/vd/release",
 			"cacheVariables": {
-				"CMAKE_BUILD_TYPE": "Release"
+				"CMAKE_BUILD_TYPE": "Release",
+				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/release/install"
 			}
 		}
 	],

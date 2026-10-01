@@ -1,13 +1,15 @@
 # Squeeze — Progress Tracker
 
-## Current Work: Desktop Debugging — Next
+## Current Work: Desktop Debugging — In Progress
 
 - Desktop/core only. iOS source and tooling removed on 2026-09-30 to avoid maintaining an inactive target.
 - VD moved to `core/vd/`, with owned tests and a single unity compilation entry point.
 - Vendored FFmpeg 9.0.2 builds statically; applications link only `libvd.a` for decoding dependencies.
 - CMake presets shared by terminal/CLion; Debug/Release outputs are separate, C flags explicit.
 - Modern Make 4.4.1 verified; both configurations' smoke tests pass.
-- Next: Odin → VD source debugging, then debuggable FFmpeg. See `todo.md`.
+- User verified Odin → VD → Odin stepping in CLion using a custom target delegating to `just`.
+- Separate FFmpeg Debug/Release builds; both configurations' smoke tests pass. LLDB resolves `avformat_version` to source in the desktop binary.
+- Next: verify live FFmpeg stepping, variables, and backtraces in CLion. See `todo.md` and `docs/references/desktop_debugging.md`.
 - iOS plans are preserved under `docs/sprints/deferred/`; completed sprint history below remains historical.
 
 ## Historical: Monorepo Bootstrap (2026-06-18)
