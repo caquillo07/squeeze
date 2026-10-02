@@ -8,7 +8,7 @@ import "core:mem"
 import vmem "core:mem/virtual"
 import "core:reflect"
 import "core:strings"
-import sdl "vendor:sdl3"
+import sdl "ext:odin-sdl3"
 //import "vendor:sdl3/ttf"
 
 WindowAppName :: "vdbg"

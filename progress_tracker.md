@@ -9,7 +9,10 @@
 - Modern Make 4.4.1 verified; both configurations' smoke tests pass.
 - User verified Odin → VD → Odin stepping in CLion using a custom target delegating to `just`.
 - Separate FFmpeg Debug/Release builds; both configurations' smoke tests pass. LLDB resolves `avformat_version` to source in the desktop binary.
-- Next: verify live FFmpeg stepping, variables, and backtraces in CLion. See `todo.md` and `docs/references/desktop_debugging.md`.
+- SDL3 3.4.4 source-vendored with pinned Odin bindings; SDL3/shadercross build explicitly into separate Debug/Release directories. Local static imports remove the system SDL dependency.
+- C/SDL/shadercross and Odin binding smoke tests pass in both configurations. LLDB resolves SDL implementation source in the desktop binary.
+- SDL incremental reuse, missing-artifact failure, DWARF policy, desktop linking, and FFmpeg regression checks pass. Desktop restored to Debug artifacts.
+- Next: verify live dependency stepping, variables, backtraces, and GUI/Metal behavior in CLion. See `todo.md` and `docs/references/desktop_debugging.md`.
 - iOS plans are preserved under `docs/sprints/deferred/`; completed sprint history below remains historical.
 
 ## Historical: Monorepo Bootstrap (2026-06-18)

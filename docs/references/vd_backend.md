@@ -147,8 +147,9 @@ Keep CLion idle during that experiment. The next default configure restores FFmp
 reload the IDE project afterwards. No second backend profile/cache is created.
 Only `just build-shim` publishes a copy to `build/desktop/libvd.a` for Odin; that
 path holds the last requested configuration. Do not publish both concurrently.
-SDL is still an existing system dependency until separately vendored; this design
-covers the VD boundary, not a claim that the whole application is self-contained yet.
+SDL3 and shadercross are now separately source-vendored and built explicitly;
+see [SDL build notes](../../ext/SDL3.README.md). They remain desktop dependencies,
+not part of the backend-neutral VD archive.
 
 For Odin → VD → FFmpeg debugging, see [desktop debugger setup](desktop_debugging.md).
 

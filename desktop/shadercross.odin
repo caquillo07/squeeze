@@ -1,9 +1,9 @@
 package main
 
 import "core:c"
-import sdl "vendor:sdl3"
+import sdl "ext:odin-sdl3"
 
-SHADERCROSS_LIB_PATH :: "../build/deps/shadercross/"
+SHADERCROSS_LIB_PATH :: "../build/desktop/"
 
 foreign import shadercross_lib {SHADERCROSS_LIB_PATH + "libSDL3_shadercross.a"}
 

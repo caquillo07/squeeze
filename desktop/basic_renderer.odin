@@ -2,7 +2,7 @@ package main
 
 import log "core:log"
 import strings "core:strings"
-import sdl "vendor:sdl3"
+import sdl "ext:odin-sdl3"
 
 Basic_Renderer :: struct {
 	window:        ^sdl.Window,

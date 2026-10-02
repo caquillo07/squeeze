@@ -58,21 +58,29 @@ allocations performed by backend libraries must use their matching cleanup APIs.
 Vendored FFmpeg source lives in `ext/ffmpeg/`. Its configure/make build is explicit,
 out-of-tree, and independent of ordinary VD or Odin builds. The initial configuration
 has no external codec libraries, GPL/nonfree options, encoders, or network support.
-SDL_gpu_shadercross is also vendored. SDL3 itself is still a system dependency;
-its vendoring is future work, not an already satisfied requirement.
+SDL3 3.4.4 and SDL_gpu_shadercross are vendored and built explicitly together,
+with local SDL headers and separate Debug/Release artifacts. Odin uses pinned
+project-local SDL bindings that import the selected static archive, never system
+SDL3. Vendored Odin packages use the `ext` collection (for example,
+`ext:odin-sdl3`), registered centrally in `justfile` and as a collection root in
+CLion. See [SDL build notes](../../ext/SDL3.README.md).
 
 ```sh
 just build-deps                       # explicit dependency builds
+just build-sdl                        # explicit Debug SDL3 + shadercross build/tests
+just smoke-sdl                        # Odin bindings against local SDL artifacts
 just build-shim                       # Debug VD archive, published for Odin
 just smoke-vd                         # Debug C tests
 just vd_config=release smoke-vd       # Release C tests
+just check-desktop                    # Odin check with shared collections
 just build-desktop                    # C archive + shaders + Odin app
 just run-desktop
 just clean                            # project outputs; dependencies preserved
 just clean-all                        # all build outputs, including dependencies
 ```
 
-CMake owns only the C island; Odin compilation stays in `justfile`. CLion and the
+CMake owns VD and the explicit SDL dependency project; Odin compilation stays in
+`justfile`. CLion and the
 terminal consume the same presets and tools. Debug/Release each have their own
 cache under `build/vd/`; the IDE and terminal share the directory for each configuration.
 Only one build/configure process should use a given directory at a time.

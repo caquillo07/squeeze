@@ -11,7 +11,7 @@ import "core:mem"
 import "core:os"
 import filepath "core:path/filepath"
 import strings "core:strings"
-import sdl "vendor:sdl3"
+import sdl "ext:odin-sdl3"
 
 Pipeline_Kind :: enum {
 	Frame,

@@ -1,6 +1,6 @@
 package main
 
-import sdl "vendor:sdl3"
+import sdl "ext:odin-sdl3"
 
 Button_State :: struct {
 	ended_down:       bool, // is the key held right now?

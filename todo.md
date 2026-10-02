@@ -4,7 +4,8 @@
 **Status:** In Progress
 
 ## Goal
-Source-level debugging from the Odin desktop app through VD into FFmpeg in CLion.
+Source-level debugging from the Odin desktop app through VD into FFmpeg, and
+through local SDL3, in CLion.
 
 ## Context
 Desktop/core is the active scope. The C unity build, shared CLion/terminal presets,
@@ -48,6 +49,19 @@ removed; its original plans are in `docs/sprints/deferred/`.
 - CLion custom targets use project-local build tools, not IDE-wide External Tools.
 - Custom Build Application's executable field needs an absolute path; `$ProjectFileDir$` was treated literally.
 - Setup is documented in `docs/references/desktop_debugging.md`.
+- SDL uses dispatch wrappers; `SDL_Init_REAL` and `SDL_GetPerformanceFrequency_REAL` are useful implementation breakpoints.
+- Vendored SPIRV-Cross embeds configure timestamps; `SOURCE_DATE_EPOCH=0` prevents needless rebuilds.
+
+## SDL3 Debugging — In Progress
+
+- [x] Vendor user-supplied SDL3 3.4.4 source and pin project-local Odin bindings with an explicit static-library import
+- [x] Build SDL3 and shadercross explicitly into separate Debug/Release directories; never rebuild automatically during app builds
+- [x] Debug: retain symbols/source paths and frame pointers, disable optimizations and stripping
+- [x] Release: optimized artifacts without debug information
+- [x] Select matching prebuilt artifacts through `vd_config`; CLion delegates to `just`, without separate flags
+- [x] Headless C/SDL/shadercross and Odin binding smoke tests in both configurations
+- [x] Confirm incremental reuse, missing-artifact failure, Debug/Release DWARF policy, desktop linking, and FFmpeg regression tests
+- [ ] Verify live Odin → SDL3 → Odin stepping, variables, backtraces, and GUI/Metal behavior in CLion (setup documented in `docs/references/desktop_debugging.md`)
 
 ## Completion Checklist
 - [ ] Both debugging phases verified

@@ -3,6 +3,8 @@
 Verified setup: CLion 2026.2.3, Odin Support plugin, native LLDB, macOS arm64.
 The user verified Odin → VD → Odin stepping. FFmpeg symbols/source lookup are
 verified; live FFmpeg stepping and variable/backtrace inspection remain to check.
+SDL3/FFmpeg source lookup is verified in the statically linked desktop binary;
+live SDL GUI stepping remains a user check.
 
 ## Build Ownership
 
@@ -15,11 +17,16 @@ Build dependencies explicitly before building the app:
 ```sh
 just build-ffmpeg                   # Debug: -g3 -O0, no stripping
 just vd_config=release build-ffmpeg # Release: -O3, no debug information
-just build-desktop                 # Debug VD/FFmpeg; Odin currently always -debug
+just build-sdl                     # Debug SDL3 + shadercross, including C smoke test
+just vd_config=release build-sdl    # Release SDL3 + shadercross
+just smoke-sdl                     # Odin bindings against local SDL
+just build-desktop                 # Debug dependencies; Odin currently always -debug
 ```
 
 Each VD preset selects matching archives under `build/deps/ffmpeg/<config>/install/`.
-Project builds never compile FFmpeg. `just clean` preserves dependencies and source
+SDL3/shadercross are selected from `build/deps/sdl/<config>/install/` and published
+as prebuilt archives in `build/desktop/`. Project builds never compile FFmpeg or
+SDL dependencies. `just clean` preserves dependencies and source
 symlinks; `just clean-all` removes them. Do not run IDE and terminal builds
 concurrently in the same configuration directory.
 
@@ -28,6 +35,10 @@ concurrently in the same configuration directory.
 1. Open the root CMake project; configure the shared native toolchain and presets
    as described in [VD build notes](vd_backend.md).
 2. Configure the Odin Support plugin's compiler/SDK and Odin source roots.
+   Mark `ext/` as a **Collection Source Root** named `ext`, so `ext:odin-sdl3`
+   resolves in the editor. If `ext/odin-sdl3/` was marked as a source root, unmark
+   that child first. `just` supplies the matching `-collection:ext=.../ext` flag.
+   Use `just check-desktop` for command-line checking with that same collection.
 3. In **Settings → Build, Execution, Deployment → Custom Build Targets**, add
    a target named `Squeeze Desktop`. Select the native toolchain with LLDB.
 4. Click **… beside Build**, then **+** to create a project-local build tool:
@@ -71,3 +82,26 @@ lldb --batch -o 'target create build/squeeze-desktop' \
 ```
 
 The expected result includes `version.c` and a line entry, not only a symbol name.
+
+## SDL3 Stepping
+
+No run-configuration changes are needed. Debug `Squeeze Desktop` and break at
+`sdl.Init()` or `sdl.GetPerformanceFrequency()` in `desktop/main.odin`.
+SDL's public APIs use dispatch wrappers: stepping may first enter `SDL_dynapi.c`
+before reaching the implementation. A function breakpoint on `SDL_Init_REAL` or
+`SDL_GetPerformanceFrequency_REAL` lands directly in the real implementation.
+The corresponding sources are under `ext/SDL3/`; no source mapping is needed.
+
+Check arguments, local variables, and an Odin/SDL backtrace, then return to Odin.
+SDK framework internals require their own symbols and are not vendored SDL source.
+SDL and shadercross Debug retain C, Objective-C, and C++ source information.
+
+```sh
+lldb --batch -o 'target create build/squeeze-desktop' \
+    -o 'image lookup -v -n SDL_Init_REAL'
+otool -L build/squeeze-desktop
+```
+
+The lookup should show `ext/SDL3/src/SDL.c` and line information. The executable
+should have no SDL3 dylib or Homebrew dependencies; platform SDK frameworks and
+system runtimes remain expected. See [SDL build notes](../../ext/SDL3.README.md).
