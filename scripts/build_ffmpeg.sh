@@ -48,11 +48,18 @@ else
 fi
 printf '%s\n' "${flags[@]}" > configure.flags.next
 if [[ ! -f ffbuild/config.mak ]] || ! cmp -s configure.flags.next configure.flags; then
+    printf 'FFmpeg %s: configuring (compiler probes may be quiet)…\n' "$config"
+    printf 'Probe log: %s/ffbuild/config.log\n' "$build_dir"
+    configure_start=$SECONDS
     "$source_dir/configure" "${flags[@]}"
     mv configure.flags.next configure.flags
+    printf 'FFmpeg %s: configured in %ss\n' "$config" "$((SECONDS - configure_start))"
 else
     rm configure.flags.next
+    printf 'FFmpeg %s: configuration unchanged; skipping configure.\n' "$config"
 fi
+printf 'FFmpeg %s: compiling with %s jobs…\n' "$config" "${FFMPEG_JOBS:-8}"
 "$make_program" -j"${FFMPEG_JOBS:-8}"
+printf 'FFmpeg %s: installing…\n' "$config"
 "$make_program" install
 printf 'FFmpeg %s static libraries: %s/lib/\n' "$config" "$prefix"
