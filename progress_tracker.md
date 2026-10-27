@@ -1,6 +1,12 @@
 # Squeeze — Progress Tracker
 
-## Current Work: Desktop Debugging — In Progress
+## Current Work: Profiling and Measurement — In Progress
+
+- Started 2026-10-27. First slice: make the shutdown report meaningful (metric contracts, session aggregates, split render stages). See `todo.md`.
+
+## Completed: Desktop Debugging (2026-09-30 → 2026-10-27)
+
+Archived in `docs/sprints/completed/2026-10_desktop_debugging.md`.
 
 - Desktop/core only. iOS source and tooling removed on 2026-09-30 to avoid maintaining an inactive target.
 - VD moved to `core/vd/`, with owned tests and a single unity compilation entry point.
@@ -12,7 +18,7 @@
 - SDL3 3.4.4 source-vendored with pinned Odin bindings; SDL3/shadercross build explicitly into separate Debug/Release directories. Local static imports remove the system SDL dependency.
 - C/SDL/shadercross and Odin binding smoke tests pass in both configurations. LLDB resolves SDL implementation source in the desktop binary.
 - SDL incremental reuse, missing-artifact failure, DWARF policy, desktop linking, and FFmpeg regression checks pass. Desktop restored to Debug artifacts.
-- Next: verify live dependency stepping, variables, backtraces, and GUI/Metal behavior in CLion. See `todo.md` and `docs/references/desktop_debugging.md`.
+- User confirmed live CLion stepping across Odin, VD, FFmpeg, and SDL3. `ext` is an Odin collection; FFmpeg build reports phases and configure duration.
 - iOS plans are preserved under `docs/sprints/deferred/`; completed sprint history below remains historical.
 
 ## Historical: Monorepo Bootstrap (2026-06-18)

@@ -7,7 +7,7 @@ Upstream: https://github.com/odin-lang/Odin/tree/a2fb372/vendor/sdl3
 
 Import this package as `import sdl "ext:odin-sdl3"`. The `ext` collection points
 to the repository's `ext/` directory; `justfile` supplies it to Odin build/check/run
-commands. In CLion, mark `ext/` as a Collection Source Root named `ext`.
+commands. In CLion, right-click `ext/` → **Mark Directory as → Odin Collection** (named `ext`).
 
 Only `sdl3__foreign.odin` differs from the imported binding sources:
 - Require macOS arm64, our current supported target.

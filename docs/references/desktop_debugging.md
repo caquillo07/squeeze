@@ -1,10 +1,8 @@
 # Desktop Source Debugging
 
 Verified setup: CLion 2026.2.3, Odin Support plugin, native LLDB, macOS arm64.
-The user verified Odin → VD → Odin stepping. FFmpeg symbols/source lookup are
-verified; live FFmpeg stepping and variable/backtrace inspection remain to check.
-SDL3/FFmpeg source lookup is verified in the statically linked desktop binary;
-live SDL GUI stepping remains a user check.
+Live stepping across Odin, VD, FFmpeg, and SDL3 is verified in CLion. FFmpeg and
+SDL3 source lookup is also verified with LLDB in the statically linked binary.
 
 ## Build Ownership
 
@@ -35,7 +33,7 @@ concurrently in the same configuration directory.
 1. Open the root CMake project; configure the shared native toolchain and presets
    as described in [VD build notes](vd_backend.md).
 2. Configure the Odin Support plugin's compiler/SDK and Odin source roots.
-   Mark `ext/` as a **Collection Source Root** named `ext`, so `ext:odin-sdl3`
+   Right-click `ext/` → **Mark Directory as → Odin Collection** (named `ext`), so `ext:odin-sdl3`
    resolves in the editor. If `ext/odin-sdl3/` was marked as a source root, unmark
    that child first. `just` supplies the matching `-collection:ext=.../ext` flag.
    Use `just check-desktop` for command-line checking with that same collection.
