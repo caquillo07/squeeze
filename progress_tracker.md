@@ -3,6 +3,9 @@
 ## Current Work: Profiling and Measurement — In Progress
 
 - Started 2026-10-27. First slice: make the shutdown report meaningful (metric contracts, session aggregates, split render stages). See `todo.md`.
+- Done: per-stage session aggregates (input, app update, texture upload, render commands, present, frame interval) with an aligned shutdown table, verified on real runs. Tracy chosen for traces (vendored 0.14.1 client, developer-installed viewer).
+- First finding: ~82% of frame time is waiting in present while redrawing a static image ~129×/s.
+- Next: curated four-section shutdown report, then Tracy integration.
 
 ## Completed: Desktop Debugging (2026-09-30 → 2026-10-27)
 

@@ -86,10 +86,9 @@ build-shaders:
     echo "Shaders: $PWD/build/shaders/"
 
 # Build desktop app
-build-desktop: build-shim prepare-sdl build-shaders
+build-desktop: fmt build-shim prepare-sdl build-shaders
     #!/usr/bin/env bash
     set -euo pipefail
-    odinfmt -w desktop/
     sdl_link_flags=$(< build/desktop/sdl-link-flags)
     odin build desktop/ {{quote(odin_ext_collection)}} -out:build/squeeze-desktop -debug -extra-linker-flags:"$sdl_link_flags"
     echo "Desktop binary: $PWD/build/squeeze-desktop"
