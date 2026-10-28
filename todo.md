@@ -64,8 +64,8 @@ The report and traces use the same stage names and boundaries.
 - [x] Verify the report on a real run
 - [x] Report reads in order: Run, Startup, Frames (stages in execution order, untimed remainder, frame total last), Shutdown, Memory
 - [x] `just fmt` passes an absolute `-config:`; odinfmt silently ignored `odinfmt.json` when its path lookup failed (sandbox `filepath.abs` permission error)
-- [ ] Decide whether stats collection stays enabled in Release, after measuring overhead
-- [ ] Measure instrumentation overhead
+- [ ] Decide Release behavior: collection is negligible (recommend always on); separately decide whether Release prints the report at exit
+- [x] Measure instrumentation overhead: measured at exit in the running build and printed per frame. ~140–160 ns/frame upper bound (~0.002% of a frame) in both `-debug` and `-o:speed`; clock read ~9.5 ns dominates. The measurement procedure is `optimization_mode="none"` because `-o:speed` folded the loops and reported 0 ns
 
 Initial stage contracts (wall-clock monotonic ticks, displayed in ms):
 
@@ -143,7 +143,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 ## Next Session
 1. Done: the ~90 ms event-pump stall is at frame 2 (startup), alongside `WINDOW_PIXEL_SIZE_CHANGED` — window appearing/scaling, not our code.
 2. Done: arena usage and peaks.
-3. Measure instrumentation overhead; decide Release behavior.
+3. Done: instrumentation overhead measured each run; decide Release printing.
 4. Then Phase 2: document viewer setup, vendor Tracy 0.14.1 client + odin-tracy, one frame mark and the six stage zones.
 
 ## First Findings (Debug build, dummy workload)

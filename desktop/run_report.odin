@@ -146,6 +146,16 @@ Arena_Stats :: struct {
 	max_used_frame:   u64,
 	committed:        uint,
 	max_committed:    uint,
+	// Number of arena_stats_sample calls, for the instrumentation cost estimate.
+	samples:          u64,
+}
+
+// Per-call cost of our own instrumentation, measured in tight loops at exit in the
+// running build. Warm caches make these optimistic; scale is what matters.
+Instrumentation_Cost :: struct {
+	clock_read_ms:   f64,
+	stage_record_ms: f64,
+	arena_sample_ms: f64,
 }
 
 // Hot path: no allocation, formatting, or logging.
@@ -201,7 +211,51 @@ arena_stats_sample :: proc(stats: ^Arena_Stats, arena: ^vmem.Arena, frame: u64) 
 
 	stats.committed = committed
 	stats.max_committed = max(stats.max_committed, committed)
+	stats.samples += 1
 	return
+}
+
+// Unoptimized on purpose: an optimizing build otherwise folds or hoists the loops'
+// redundant work and reports zero. The called procedures stay optimized; the loop
+// bookkeeping adds a little, keeping the estimate an upper bound.
+@(optimization_mode = "none")
+measure_instrumentation_cost :: proc() -> Instrumentation_Cost {
+	cost: Instrumentation_Cost
+
+	CLOCK_READS :: 100_000
+	sink: u64
+	started_at := time_now()
+	for _ in 0 ..< CLOCK_READS {
+		sink += time_now()
+	}
+	cost.clock_read_ms = ticks_to_ms(time_now() - started_at) / CLOCK_READS
+
+	STAGE_RECORDS :: 100_000
+	stage: Stage_Stats
+	started_at = time_now()
+	for i in 0 ..< u64(STAGE_RECORDS) {
+		stage_record(&stage, i, i + (i & 7), i)
+	}
+	cost.stage_record_ms = ticks_to_ms(time_now() - started_at) / STAGE_RECORDS
+
+	ARENA_SAMPLES :: 10_000
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena, 1024 * 1024) == nil {
+		arena_stats: Arena_Stats
+		arena_stats_init(&arena_stats, &arena)
+		started_at = time_now()
+		for i in 0 ..< u64(ARENA_SAMPLES) {
+			arena_stats_sample(&arena_stats, &arena, i)
+		}
+		cost.arena_sample_ms = ticks_to_ms(time_now() - started_at) / ARENA_SAMPLES
+		vmem.arena_destroy(&arena)
+	}
+
+	// Keep the loops' results observable so an optimizing build cannot drop them.
+	if sink == 0 || stage.count != STAGE_RECORDS {
+		fmt.println("(instrumentation measurement loop did not run as expected)")
+	}
+	return cost
 }
 
 run_info_capture_backend :: proc(info: ^Run_Info) {
@@ -316,6 +370,7 @@ print_run_report :: proc(stats: ^Run_Stats) {
 		fmt.printf("  Inside present: %.0f%% of loop time (includes waiting)\n", present_share)
 	}
 	fmt.printf("  Timer resolution: %s\n", strings.trim_space(format_duration_ms(1000.0 / platform.clock_freq)))
+	print_instrumentation_cost(stats)
 
 	fmt.println("\nShutdown")
 	print_lifecycle_phase(stats, .Shutdown)
@@ -373,6 +428,38 @@ print_lifecycle_phase :: proc(stats: ^Run_Stats, phase: Lifecycle_Phase) {
 			fmt.printf("%-28s %s\n", label, duration)
 		}
 	}
+	return
+}
+
+// Upper-bound estimate: assumes two clock reads per stage record, though consecutive
+// stages share boundary timestamps. Counts come from the session, costs from exit.
+print_instrumentation_cost :: proc(stats: ^Run_Stats) {
+	if stats.frame_index == 0 {
+		return
+	}
+	frames := &stats.frames
+	records := frames.frame_interval.count + frames.input.count + frames.app_update.count
+	records += frames.texture_upload.count + frames.render_commands.count + frames.present.count
+	samples := stats.permanent_arena.samples + stats.scratch_arena.samples
+
+	cost := measure_instrumentation_cost()
+	total_ms := f64(2 * records) * cost.clock_read_ms
+	total_ms += f64(records) * cost.stage_record_ms
+	total_ms += f64(samples) * cost.arena_sample_ms
+	per_frame_ms := total_ms / f64(stats.frame_index)
+
+	fmt.printf("  Instrumentation: ≤ %s per frame", strings.trim_space(format_duration_ms(per_frame_ms)))
+	frame_mean_ms := stage_mean_ms(frames.frame_interval)
+	if frame_mean_ms > 0 {
+		fmt.printf(" (%.3f%% of mean frame)", per_frame_ms / frame_mean_ms * 100.0)
+	}
+	fmt.println()
+	fmt.printf(
+		"    per call: clock read %s, stage record %s, arena sample %s\n",
+		strings.trim_space(format_duration_ms(cost.clock_read_ms)),
+		strings.trim_space(format_duration_ms(cost.stage_record_ms)),
+		strings.trim_space(format_duration_ms(cost.arena_sample_ms)),
+	)
 	return
 }
 
