@@ -51,7 +51,9 @@ The report and traces use the same stage names and boundaries.
 - [x] Mark inclusive (nested) startup timings so they are not added to their children (`Lifecycle_Step` + `lifecycle_parents`)
 - [x] Worst-case frame number per stage (`worst_frame`)
 - [x] Arena capacity: initial, final, growth events
-- [ ] Arena usage/high-water, only after verifying `vmem.Arena` semantics (scratch sampled before reset)
+- [x] Arena usage/high-water after verifying `vmem.Arena` semantics: peak used (+frame), peak committed, reserved/peak reserved, growth events; scratch sampled before each reset and before startup's temp scope ends. Verified headlessly with forced block growth
+- [x] Fix: growth check counted `free_all`'s release of extra blocks (a shrink) as growth
+- [x] `release_events` counter: growth + releases rising together = cycling overflow block. Growth still warns every time, deliberately loud
 - [x] Curated four-section report in `desktop/run_report.odin`: Run, Lifecycle, Frames, Memory. No hand-written state: values are recorded at runtime by the code doing the work
   - Run: commit (+dirty) and C/deps config via `-define`s from justfile; Odin version/optimization; SDL version/revision and FFmpeg versions queried at runtime; workload set by the content-creating code; renderer, vsync, display refresh captured at loop exit
   - Lifecycle: nested steps indented and marked "included in …"; unexecuted steps print "not executed"
@@ -140,7 +142,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 
 ## Next Session
 1. Done: the ~90 ms event-pump stall is at frame 2 (startup), alongside `WINDOW_PIXEL_SIZE_CHANGED` — window appearing/scaling, not our code.
-2. Verify `vmem.Arena` used/high-water semantics, then report arena usage.
+2. Done: arena usage and peaks.
 3. Measure instrumentation overhead; decide Release behavior.
 4. Then Phase 2: document viewer setup, vendor Tracy 0.14.1 client + odin-tracy, one frame mark and the six stage zones.
 
@@ -156,6 +158,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - Last-frame values mislead: last frame showed 86 fps while the session mean was ~129 fps.
 - This Odin nightly's `fmt` zero-pads right-aligned numbers by default; format numbers to strings first.
 - Odin `%Ns` width counts bytes, not runes: `µ` (2 bytes) misaligns columns. Build fixed-width strings instead.
+- `vmem` growing arena: `free_all` releases extra blocks (reserved shrinks), keeps the first block's committed pages, and zeroes its used bytes — a per-frame memset proportional to scratch use.
 - Tracy's macOS binaries are ad-hoc signed and not notarized; Gatekeeper reports the quarantined `.app` as "damaged" until quarantine is cleared and it is re-signed ad-hoc.
 
 ## Completion Checklist

@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import vmem "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import sdl "ext:odin-sdl3"
@@ -124,11 +125,27 @@ Lifecycle_Timing :: struct {
 	executed: bool,
 }
 
-// Reserved capacity of a growing virtual-memory arena: address space, not bytes used.
+// A growing virtual-memory arena, sampled at defined points: each frame before the
+// scratch reset, and before startup's temporary scratch scope ends. Peaks are the
+// highest values seen at those points, not necessarily between them.
+//   used:      bytes handed out, including alignment padding; skips unused block tails
+//   committed: pages made accessible; physical memory only once touched
+//   reserved:  address space only. Shrinks again when free_all releases extra blocks
 Arena_Stats :: struct {
 	initial_reserved: uint,
 	reserved:         uint,
+	max_reserved:     uint,
+	// Times reserved increased between samples: the initial size was too small.
 	growth_events:    u64,
+	// Times reserved decreased between samples: extra blocks released (e.g. by free_all).
+	// Growth and releases rising together means the arena is cycling an overflow block.
+	release_events:   u64,
+	used:             uint,
+	max_used:         uint,
+	// Frame of the peak used sample; 0 is startup.
+	max_used_frame:   u64,
+	committed:        uint,
+	max_committed:    uint,
 }
 
 // Hot path: no allocation, formatting, or logging.
@@ -151,14 +168,40 @@ lifecycle_record :: proc(step: Lifecycle_Step, start, end: u64) {
 	return
 }
 
-// Returns true when the arena grew since the last call.
-arena_stats_update :: proc(stats: ^Arena_Stats, reserved: uint) -> bool {
-	if reserved == stats.reserved {
-		return false
+arena_stats_init :: proc(stats: ^Arena_Stats, arena: ^vmem.Arena) {
+	stats^ = {}
+	stats.initial_reserved = arena.total_reserved
+	stats.reserved = arena.total_reserved
+	arena_stats_sample(stats, arena, 0)
+	return
+}
+
+// Cheap: reads arena fields and walks its few blocks. Returns true when the arena
+// reserved more address space since the last sample.
+arena_stats_sample :: proc(stats: ^Arena_Stats, arena: ^vmem.Arena, frame: u64) -> (grew: bool) {
+	committed: uint
+	for block := arena.curr_block; block != nil; block = block.prev {
+		committed += block.committed
 	}
-	stats.reserved = reserved
-	stats.growth_events += 1
-	return true
+
+	grew = arena.total_reserved > stats.reserved
+	if grew {
+		stats.growth_events += 1
+	} else if arena.total_reserved < stats.reserved {
+		stats.release_events += 1
+	}
+	stats.reserved = arena.total_reserved
+	stats.max_reserved = max(stats.max_reserved, arena.total_reserved)
+
+	stats.used = arena.total_used
+	if arena.total_used > stats.max_used {
+		stats.max_used = arena.total_used
+		stats.max_used_frame = frame
+	}
+
+	stats.committed = committed
+	stats.max_committed = max(stats.max_committed, committed)
+	return
 }
 
 run_info_capture_backend :: proc(info: ^Run_Info) {
@@ -278,11 +321,21 @@ print_run_report :: proc(stats: ^Run_Stats) {
 	print_lifecycle_phase(stats, .Shutdown)
 
 	// Memory
-	fmt.println("\nMemory")
-	fmt.printf("  %-14s %16s %14s %15s\n", "arena", "reserved start", "reserved end", "growth events")
+	fmt.println("\nMemory (arenas sampled each frame, before the scratch reset)")
+	fmt.printf(
+		"  %-10s %11s %9s %15s %11s %14s %7s %9s\n",
+		"arena",
+		"peak used",
+		"at frame",
+		"peak committed",
+		"reserved",
+		"peak reserved",
+		"growth",
+		"released",
+	)
 	print_arena_row("permanent", stats.permanent_arena)
 	print_arena_row("scratch", stats.scratch_arena)
-	fmt.printf("  %-32s %s\n", "Arena used / high-water", "not measured")
+	fmt.println("  Committed pages cost physical memory only once touched; reserved is address space.")
 	fmt.printf("  %-32s %s\n", "Process footprint", "not measured (use Instruments)")
 	fmt.printf("  %-32s %s\n", "GPU memory", "not measured")
 
@@ -355,13 +408,16 @@ print_stage_row :: proc(name: string, stage: Stage_Stats) {
 }
 
 print_arena_row :: proc(name: string, arena: Arena_Stats) {
-	growth := fmt.tprintf("%d", arena.growth_events)
 	fmt.printf(
-		"  %-14s %16s %14s %15s\n",
+		"  %-10s %11s %9s %15s %11s %14s %7s %9s\n",
 		name,
+		format_bytes(arena.max_used),
+		fmt.tprintf("%d", arena.max_used_frame),
+		format_bytes(arena.max_committed),
 		format_bytes(arena.initial_reserved),
-		format_bytes(arena.reserved),
-		growth,
+		format_bytes(arena.max_reserved),
+		fmt.tprintf("%d", arena.growth_events),
+		fmt.tprintf("%d", arena.release_events),
 	)
 	return
 }

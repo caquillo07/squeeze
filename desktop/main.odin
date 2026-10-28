@@ -68,15 +68,9 @@ main :: proc() {
 
 	context.logger = log.create_console_logger()
 
-	// Track arena sizes so we can warn on growth and tune initial sizes
-	platform.stats.permanent_arena = {
-		initial_reserved = permanent_arena.total_reserved,
-		reserved         = permanent_arena.total_reserved,
-	}
-	platform.stats.scratch_arena = {
-		initial_reserved = scratch_arena.total_reserved,
-		reserved         = scratch_arena.total_reserved,
-	}
+	// Track arena usage, and growth so we can tune initial sizes
+	arena_stats_init(&platform.stats.permanent_arena, &permanent_arena)
+	arena_stats_init(&platform.stats.scratch_arena, &scratch_arena)
 	run_info_capture_backend(&platform.stats.info)
 	log.infof("Permanent arena: %s reserved", format_bytes(permanent_arena.total_reserved))
 	log.infof("Scratch arena: %s reserved", format_bytes(scratch_arena.total_reserved))
@@ -106,7 +100,8 @@ main :: proc() {
 	basic_renderer_init()
 	defer basic_renderer_deinit()
 
-	// clear the temp arena so we can start the app loop fresh
+	// clear the temp arena so we can start the app loop fresh; sample its use first
+	arena_stats_sample(&platform.stats.scratch_arena, &scratch_arena, 0)
 	vmem.arena_temp_end(temp_scratch_arena)
 	vmem.arena_check_temp(&scratch_arena)
 
@@ -276,9 +271,9 @@ main :: proc() {
 		sdl.RenderPresent(platform.basic_renderer.renderer)
 		stage_record(&platform.stats.frames.present, render_commands_ended_at, time_now(), frame)
 
-		// Check for arena growth — means our initial sizes were too small
+		// Sample arenas before the scratch reset. Growth means our initial sizes were too small.
 		permanent_reserved := platform.stats.permanent_arena.reserved
-		if arena_stats_update(&platform.stats.permanent_arena, permanent_arena.total_reserved) {
+		if arena_stats_sample(&platform.stats.permanent_arena, &permanent_arena, frame) {
 			log.warnf(
 				"Permanent arena grew: %s -> %s",
 				format_bytes(permanent_reserved),
@@ -287,7 +282,7 @@ main :: proc() {
 		}
 
 		scratch_reserved := platform.stats.scratch_arena.reserved
-		if arena_stats_update(&platform.stats.scratch_arena, scratch_arena.total_reserved) {
+		if arena_stats_sample(&platform.stats.scratch_arena, &scratch_arena, frame) {
 			log.warnf(
 				"Scratch arena grew: %s -> %s",
 				format_bytes(scratch_reserved),
