@@ -5,12 +5,15 @@ import vmem "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import sdl "ext:odin-sdl3"
+import tracy "ext:odin-tracy"
 
 // Build identity, passed by justfile. Values are quoted there because an all-digit
 // commit hash would otherwise become an integer define.
 BUILD_COMMIT :: #config(SQUEEZE_COMMIT, "unknown")
 // Configuration of the C libraries and dependencies: VD, FFmpeg, SDL3, shadercross.
 BUILD_DEPS_CONFIG :: #config(SQUEEZE_DEPS_CONFIG, "unknown")
+// Tracy client mode selected by justfile: on, startup, or off.
+BUILD_TRACY_MODE :: #config(SQUEEZE_TRACY_MODE, "unknown")
 
 // Everything the shutdown report prints. Collected by the code doing the work; no
 // report text is written by hand, so the report follows the code as it changes.
@@ -51,24 +54,6 @@ Stage_Stats :: struct {
 	max_ticks:   u64,
 	// Frame number where max_ticks happened.
 	worst_frame: u64,
-}
-
-// Non-overlapping per-frame stages, summed over the whole session.
-Frame_Stages :: struct {
-	// Loop start to next loop start: pacing, not cost. Skips the first interval,
-	// which measures startup instead. Includes paused frames and debugger stops.
-	// Attributed to the frame the interval ends at.
-	frame_interval:  Stage_Stats,
-	// Reset input state and drain SDL events.
-	input:           Stage_Stats,
-	// app_update_and_render call only; not executed while paused.
-	app_update:      Stage_Stats,
-	// SDL_UpdateTexture call.
-	texture_upload:  Stage_Stats,
-	// Clear and texture draw submission; not GPU execution.
-	render_commands: Stage_Stats,
-	// SDL_RenderPresent call; may include vsync/compositor waiting.
-	present:         Stage_Stats,
 }
 
 // One-off timings, in report order. Parents are listed in lifecycle_parents.
@@ -312,6 +297,19 @@ print_run_report :: proc(stats: ^Run_Stats) {
 	}
 	fmt.println()
 	fmt.printf("  %-14s %s\n", "Decoder", string(info.backend_text[:info.backend_length]))
+	when tracy.TRACY_ENABLE {
+		tracy_mode := strings.trim(BUILD_TRACY_MODE, "\"")
+		collects := "while a viewer is connected" if tracy_mode == "on" else "from launch"
+		fmt.printf(
+			"  %-14s %s: collects %s, localhost only, callstack depth %d\n",
+			"Tracy",
+			tracy_mode,
+			collects,
+			tracy.TRACY_CALLSTACK,
+		)
+	} else {
+		fmt.printf("  %-14s %s\n", "Tracy", "off (not compiled in)")
+	}
 	workload := info.workload if info.workload != "" else "none loaded"
 	fmt.printf("  %-14s %s\n", "Workload", workload)
 	renderer := info.renderer_name if info.renderer_name != "" else "not measured"
@@ -335,7 +333,7 @@ print_run_report :: proc(stats: ^Run_Stats) {
 		"  %-14s %s loop, %d frames presented, %d paused\n",
 		"Session",
 		strings.trim_space(format_duration_ms(loop_ms)),
-		stats.frames.present.count,
+		stats.frames.stages[.Present].count,
 		stats.paused_frames,
 	)
 
@@ -346,17 +344,16 @@ print_run_report :: proc(stats: ^Run_Stats) {
 	frames := &stats.frames
 	fmt.println("\nFrames (whole session; wall-clock, includes waiting inside calls)")
 	fmt.printf("  %-16s %8s %11s %11s %11s %9s\n", "stage", "count", "total", "mean", "worst", "at frame")
-	print_stage_row("input", frames.input)
-	print_stage_row("app_update", frames.app_update)
-	print_stage_row("texture_upload", frames.texture_upload)
-	print_stage_row("render_commands", frames.render_commands)
-	print_stage_row("present", frames.present)
+	for stage in Stage {
+		print_stage_row(stage_names[stage], frames.stages[stage])
+	}
 	// Frame mean minus stage means: loop bookkeeping between timed stages. Mean-based
 	// because the frame interval has one fewer sample than the stages.
 	if frames.frame_interval.count > 0 {
-		stages_mean_ms := stage_mean_ms(frames.input) + stage_mean_ms(frames.app_update)
-		stages_mean_ms += stage_mean_ms(frames.texture_upload) + stage_mean_ms(frames.render_commands)
-		stages_mean_ms += stage_mean_ms(frames.present)
+		stages_mean_ms: f64
+		for stage in Stage {
+			stages_mean_ms += stage_mean_ms(frames.stages[stage])
+		}
 		untimed_ms := max(stage_mean_ms(frames.frame_interval) - stages_mean_ms, 0)
 		fmt.printf("  %-16s %8s  %10s  %s\n", "untimed", "", "", format_duration_ms(untimed_ms))
 	}
@@ -365,8 +362,8 @@ print_run_report :: proc(stats: ^Run_Stats) {
 		"───────────────────────────────────────────────────────────────────────",
 	)
 	print_stage_row("frame (total)", frames.frame_interval)
-	if loop_ms > 0 && stats.frames.present.count > 0 {
-		present_share := ticks_to_ms(stats.frames.present.total_ticks) / loop_ms * 100.0
+	if loop_ms > 0 && frames.stages[.Present].count > 0 {
+		present_share := ticks_to_ms(frames.stages[.Present].total_ticks) / loop_ms * 100.0
 		fmt.printf("  Inside present: %.0f%% of loop time (includes waiting)\n", present_share)
 	}
 	fmt.printf("  Timer resolution: %s\n", strings.trim_space(format_duration_ms(1000.0 / platform.clock_freq)))
@@ -438,8 +435,10 @@ print_instrumentation_cost :: proc(stats: ^Run_Stats) {
 		return
 	}
 	frames := &stats.frames
-	records := frames.frame_interval.count + frames.input.count + frames.app_update.count
-	records += frames.texture_upload.count + frames.render_commands.count + frames.present.count
+	records := frames.frame_interval.count
+	for stage in Stage {
+		records += frames.stages[stage].count
+	}
 	samples := stats.permanent_arena.samples + stats.scratch_arena.samples
 
 	cost := measure_instrumentation_cost()

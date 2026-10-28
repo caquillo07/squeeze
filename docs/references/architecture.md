@@ -73,6 +73,7 @@ just build-shim                       # Debug VD archive, published for Odin
 just smoke-vd                         # Debug C tests
 just vd_config=release smoke-vd       # Release C tests
 just check-desktop                    # Odin check with shared collections
+just run-desktop                      # Debug: Tracy on (see profiling.md)
 just build-desktop                    # C archive + shaders + Odin app
 just run-desktop
 just clean                            # project outputs; dependencies preserved
@@ -99,3 +100,5 @@ filesystem → Odin application → VD C API → private backend
                                   │
                                   └→ pixels/status → SDL presentation
 ```
+
+Profiling, the shutdown report, and Tracy: see [profiling](profiling.md).

@@ -2,10 +2,11 @@
 
 ## Current Work: Profiling and Measurement — In Progress
 
-- Started 2026-10-27. First slice: make the shutdown report meaningful (metric contracts, session aggregates, split render stages). See `todo.md`.
-- Done: per-stage session aggregates (input, app update, texture upload, render commands, present, frame interval) with an aligned shutdown table, verified on real runs. Tracy chosen for traces (vendored 0.14.1 client, developer-installed viewer).
-- First finding: ~82% of frame time is waiting in present while redrawing a static image ~129×/s.
-- Next: curated four-section shutdown report, then Tracy integration.
+- Started 2026-10-27. See `todo.md` and `docs/references/profiling.md`.
+- Phase 1 done: curated shutdown report (`desktop/run_report.odin`) with build/dependency identity queried at runtime, startup/shutdown lifecycle, per-stage frame aggregates with worst frame, arena used/committed/reserved peaks with growth/release counts, and self-measured instrumentation overhead (≤ ~150 ns/frame).
+- Phase 2 core done: Tracy 0.14.1 client + odin-tracy vendored and built from source; modes `on` (Debug default, on-demand), `startup`, `off` (Release default), localhost-only. One trace API (`desktop/trace.odin`) feeds both the report and Tracy; VD C zones via `core/vd/vd_trace.h`. Verified in the viewer; zone stats agree with the report.
+- Findings: ~82% of loop time waiting in present while redrawing a static image; ~30% of one core at idle across threads; startup stall is the window appearing, not our code.
+- Next: allocation tracking (Odin arenas, SDL, FFmpeg), then the event-driven loop.
 
 ## Completed: Desktop Debugging (2026-09-30 → 2026-10-27)
 

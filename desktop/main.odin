@@ -30,6 +30,8 @@ platform: Platform
 
 main :: proc() {
 	platform_close_started_at: u64
+	// First: names the main thread before any zone. The Tracy client itself starts at load.
+	trace_init()
 	platform_init_at := time_now()
 
 	defer {
@@ -71,6 +73,8 @@ main :: proc() {
 	// Track arena usage, and growth so we can tune initial sizes
 	arena_stats_init(&platform.stats.permanent_arena, &permanent_arena)
 	arena_stats_init(&platform.stats.scratch_arena, &scratch_arena)
+
+
 	run_info_capture_backend(&platform.stats.info)
 	log.infof("Permanent arena: %s reserved", format_bytes(permanent_arena.total_reserved))
 	log.infof("Scratch arena: %s reserved", format_bytes(scratch_arena.total_reserved))
@@ -135,32 +139,18 @@ main :: proc() {
 	platform.stats.loop_started_at = app_init_ended_at
 
 	last_frame_counter := app_init_ended_at
-	is_first_frame := true
 	app_running, global_pause := true, false
 	dt: f64
 	for app_running {
 
-		// Measure frame time
-		{
-			now := time_now()
-			dt = elapsed_from(last_frame_counter, now)
-			platform.stats.frame_index += 1
-			if !is_first_frame {
-				stage_record(
-					&platform.stats.frames.frame_interval,
-					last_frame_counter,
-					now,
-					platform.stats.frame_index,
-				)
-			}
-			is_first_frame = false
-			last_frame_counter = now
-		}
-
-		frame := platform.stats.frame_index
+		// Measure frame time. Stages (see trace.odin) feed the run report and Tracy.
+		now := time_now()
+		dt = elapsed_from(last_frame_counter, now)
+		frame_num := frame_begin(now, last_frame_counter)
+		last_frame_counter = now
 
 		// Process input events
-		app_input_started_at := time_now()
+		input := stage_begin(.Input)
 		reset_app_input(&platform.app_input)
 		event: sdl.Event
 		for sdl.PollEvent(&event) {
@@ -213,8 +203,7 @@ main :: proc() {
 				}
 			}
 		}
-		frame_input_ended_at := time_now()
-		stage_record(&platform.stats.frames.input, app_input_started_at, frame_input_ended_at, frame)
+		stage_end(input)
 
 		if button_is_pressed(platform.app_input.buttons[.GlobalGamePause]) {
 			global_pause = !global_pause
@@ -224,7 +213,7 @@ main :: proc() {
 		previous_debug_mode := platform.app.debug_mode
 		previous_vsync_mode := platform.app.vsync
 		if !global_pause {
-			app_update_started_at := time_now()
+			stage_scope(.App_Update)
 			app_update_and_render(
 				&platform.app,
 				&platform.app_input,
@@ -232,7 +221,6 @@ main :: proc() {
 				platform.gpu_renderer.pixel_width,
 				platform.gpu_renderer.pixel_height,
 			)
-			stage_record(&platform.stats.frames.app_update, app_update_started_at, time_now(), frame)
 		} else {
 			platform.stats.paused_frames += 1
 		}
@@ -257,23 +245,24 @@ main :: proc() {
 			app_running = false
 		}
 
-		texture_upload_started_at := time_now()
-		sdl.UpdateTexture(platform.basic_renderer.video_texture, nil, raw_data(pixels), WindowWidth * 4)
-		texture_upload_ended_at := time_now()
-		stage_record(&platform.stats.frames.texture_upload, texture_upload_started_at, texture_upload_ended_at, frame)
-
-		sdl.SetRenderDrawColor(platform.basic_renderer.renderer, 0, 0, 0, 255)
-		sdl.RenderClear(platform.basic_renderer.renderer)
-		sdl.RenderTexture(platform.basic_renderer.renderer, platform.basic_renderer.video_texture, nil, nil)
-		render_commands_ended_at := time_now()
-		stage_record(&platform.stats.frames.render_commands, texture_upload_ended_at, render_commands_ended_at, frame)
-
-		sdl.RenderPresent(platform.basic_renderer.renderer)
-		stage_record(&platform.stats.frames.present, render_commands_ended_at, time_now(), frame)
+		{
+			stage_scope(.Texture_Upload)
+			sdl.UpdateTexture(platform.basic_renderer.video_texture, nil, raw_data(pixels), WindowWidth * 4)
+		}
+		{
+			stage_scope(.Render_Commands)
+			sdl.SetRenderDrawColor(platform.basic_renderer.renderer, 0, 0, 0, 255)
+			sdl.RenderClear(platform.basic_renderer.renderer)
+			sdl.RenderTexture(platform.basic_renderer.renderer, platform.basic_renderer.video_texture, nil, nil)
+		}
+		{
+			stage_scope(.Present)
+			sdl.RenderPresent(platform.basic_renderer.renderer)
+		}
 
 		// Sample arenas before the scratch reset. Growth means our initial sizes were too small.
 		permanent_reserved := platform.stats.permanent_arena.reserved
-		if arena_stats_sample(&platform.stats.permanent_arena, &permanent_arena, frame) {
+		if arena_stats_sample(&platform.stats.permanent_arena, &permanent_arena, frame_num) {
 			log.warnf(
 				"Permanent arena grew: %s -> %s",
 				format_bytes(permanent_reserved),
@@ -282,13 +271,16 @@ main :: proc() {
 		}
 
 		scratch_reserved := platform.stats.scratch_arena.reserved
-		if arena_stats_sample(&platform.stats.scratch_arena, &scratch_arena, frame) {
+		if arena_stats_sample(&platform.stats.scratch_arena, &scratch_arena, frame_num) {
 			log.warnf(
 				"Scratch arena grew: %s -> %s",
 				format_bytes(scratch_reserved),
 				format_bytes(scratch_arena.total_reserved),
 			)
 		}
+
+		trace_plot_bytes("permanent_used", permanent_arena.total_used)
+		trace_plot_bytes("scratch_used", scratch_arena.total_used)
 
 		// Wipe scratch — everything allocated this frame is gone
 		free_all(context.temp_allocator)

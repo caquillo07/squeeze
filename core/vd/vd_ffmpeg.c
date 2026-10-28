@@ -5,8 +5,10 @@
 #include <libavutil/avutil.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
+#include "vd_trace.h"
 
 size_t vd_backend_describe(char *buffer, size_t capacity) {
+	trace_begin(zone, "vd_backend_describe");
 	unsigned avformat = avformat_version();
 	unsigned avcodec = avcodec_version();
 	unsigned avutil = avutil_version();
@@ -24,6 +26,7 @@ size_t vd_backend_describe(char *buffer, size_t capacity) {
 		AV_VERSION_MAJOR(swscale), AV_VERSION_MINOR(swscale), AV_VERSION_MICRO(swscale),
 		AV_VERSION_MAJOR(swresample), AV_VERSION_MINOR(swresample), AV_VERSION_MICRO(swresample)
 	);
+	trace_end(zone);
 	// snprintf only fails on encoding errors; report an empty description rather than a negative size.
 	if (length < 0) {
 		if (capacity > 0) {
@@ -35,6 +38,7 @@ size_t vd_backend_describe(char *buffer, size_t capacity) {
 }
 
 void vd_hello() {
+	trace_begin(zone, "vd_hello");
 	printf("[VD] FFmpeg %s (%s)\n", av_version_info(), avutil_license());
 	printf(
 		"[VD] avformat=%u avcodec=%u avutil=%u swscale=%u swresample=%u\n",
@@ -44,4 +48,5 @@ void vd_hello() {
 		swscale_version(),
 		swresample_version()
 	);
+	trace_end(zone);
 }

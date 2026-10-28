@@ -26,6 +26,7 @@
 			"binaryDir": "${sourceDir}/build/vd/debug",
 			"cacheVariables": {
 				"CMAKE_BUILD_TYPE": "Debug",
+				"VD_TRACY": "ON",
 				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/debug/install"
 			}
 		},
@@ -37,6 +38,7 @@
 			"binaryDir": "${sourceDir}/build/vd/release",
 			"cacheVariables": {
 				"CMAKE_BUILD_TYPE": "Release",
+				"VD_TRACY": "OFF",
 				"FFMPEG_PREFIX": "${sourceDir}/build/deps/ffmpeg/release/install"
 			}
 		}

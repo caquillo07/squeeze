@@ -17,6 +17,11 @@ set(VD_BACKEND "ffmpeg" CACHE STRING "VD backend: ffmpeg or stub")
 set_property(CACHE VD_BACKEND PROPERTY STRINGS ffmpeg stub)
 string(TOLOWER "${CMAKE_BUILD_TYPE}" vd_config)
 set(FFMPEG_PREFIX "${CMAKE_SOURCE_DIR}/build/deps/ffmpeg/${vd_config}/install" CACHE PATH "Prebuilt FFmpeg installation")
+# Tracy zones in VD (vd_trace.h). libvd.a only references the client; the app links the
+# single client, so it is never merged into the archive. Presets set the default.
+option(VD_TRACY "Compile VD's Tracy zones" OFF)
+set(VD_TRACY_CALLSTACK "0" CACHE STRING "Stack frames captured per VD Tracy zone")
+set(TRACY_LIBRARY "${CMAKE_SOURCE_DIR}/build/deps/tracy/${vd_config}/on/libtracy.a" CACHE FILEPATH "Prebuilt Tracy client, linked into VD tests only")
 
 if (NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
 	message(FATAL_ERROR "VD archive build currently supports macOS arm64 only")
@@ -40,7 +45,17 @@ add_compile_options(
 add_library(vd_unity OBJECT core/vd/vd.c)
 # Visible to the IDE, but still compiled only through vd.c.
 set_source_files_properties(core/vd/vd_ffmpeg.c core/vd/vd_stub.c PROPERTIES HEADER_FILE_ONLY ON)
-target_sources(vd_unity PRIVATE core/vd/vd.h core/vd/vd_ffmpeg.c core/vd/vd_stub.c)
+target_sources(vd_unity PRIVATE core/vd/vd.h core/vd/vd_trace.h core/vd/vd_ffmpeg.c core/vd/vd_stub.c)
+# Always on the include path: TracyC.h compiles its macros to nothing without TRACY_ENABLE.
+target_include_directories(vd_unity SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/ext/tracy/public")
+if (VD_TRACY)
+	if (NOT EXISTS "${TRACY_LIBRARY}")
+		message(FATAL_ERROR "Missing ${TRACY_LIBRARY}. Run just vd_config=${vd_config} build-tracy first.")
+	endif ()
+	target_compile_definitions(vd_unity PRIVATE TRACY_ENABLE "TRACY_CALLSTACK=${VD_TRACY_CALLSTACK}")
+endif ()
+message(STATUS "VD Tracy zones: ${VD_TRACY}")
+
 set(vd_archives)
 if (VD_BACKEND STREQUAL "ffmpeg")
 	foreach (lib avformat avcodec avutil swscale swresample)
@@ -92,6 +107,9 @@ foreach (test IN LISTS vd_tests)
 	target_include_directories(${test} PRIVATE "${CMAKE_SOURCE_DIR}/core/vd")
 	target_compile_options(${test} PRIVATE -UNDEBUG)
 	target_link_libraries(${test} PRIVATE "${vd_archive}")
+	if (VD_TRACY)
+		target_link_libraries(${test} PRIVATE "${TRACY_LIBRARY}" c++)
+	endif ()
 	add_test(NAME ${test} COMMAND ${test})
 	add_custom_command(TARGET ${test} POST_BUILD
 		COMMAND "${CMAKE_COMMAND}" -E echo "Smoke binary: $<TARGET_FILE:${test}>"

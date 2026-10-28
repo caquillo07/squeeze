@@ -9,6 +9,13 @@ vd_preset := "vd-" + vd_config
 vd_build_dir := "build/vd/" + vd_config
 # Named imports for vendored Odin packages, shared by build/check/smoke commands.
 odin_ext_collection := "-collection:ext=" + justfile_directory() + "/ext"
+# Tracy client mode. on: collect while a viewer is connected (default for debug).
+# startup: buffer from launch so startup is captured. off: no Tracy code at all
+# (default for release). Both enabled modes listen on localhost only.
+tracy := if vd_config == "release" { "off" } else { "on" }
+# Stack frames captured per Tracy zone/allocation; 0 is none. Costly: just tracy_callstack=8 run-desktop
+tracy_callstack := "0"
+odin_tracy_define := if tracy == "off" { "" } else if tracy == "on" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack } else if tracy == "startup" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack } else { error("tracy must be on, startup, or off") }
 
 # ──────────────────────────────────────────────
 
@@ -49,9 +56,33 @@ smoke-sdl: prepare-sdl
     sdl_link_flags=$(< build/desktop/sdl-link-flags)
     odin run scripts/sdl/odin-smoke/ {{quote(odin_ext_collection)}} -out:build/desktop/sdl-odin-smoke -debug -extra-linker-flags:"$sdl_link_flags"
 
+# Build both Tracy client modes explicitly (incremental; one translation unit each)
+build-tracy:
+    bash scripts/build_tracy.sh {{quote(vd_config)}} on
+    bash scripts/build_tracy.sh {{quote(vd_config)}} startup
+
+# Publish the matching prebuilt Tracy client unless tracy=off; never builds it here
+prepare-tracy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{tracy}}" == off ]]; then exit 0; fi
+    archive="$PWD/build/deps/tracy/{{vd_config}}/{{tracy}}/libtracy.a"
+    if [[ ! -f "$archive" ]]; then
+        echo "Missing $archive. Run just vd_config={{vd_config}} build-tracy first." >&2
+        exit 1
+    fi
+    cmake -E make_directory build/desktop
+    cmake -E copy_if_different "$archive" build/desktop/libtracy.a
+
+# Check the Odin Tracy bindings link and run against the matching prebuilt client
+smoke-tracy:
+    just tracy=on vd_config={{quote(vd_config)}} prepare-tracy
+    odin run scripts/tracy/odin-smoke/ {{quote(odin_ext_collection)}} -out:build/desktop/tracy-odin-smoke -debug -define:TRACY_ENABLE=true -extra-linker-flags:-lc++
+
 # Configure all C targets; building a subset does not shrink the IDE database
 configure-vd:
-    cmake --preset {{quote(vd_preset)}} {{if vd_backend == "" { "" } else { quote("-DVD_BACKEND=" + vd_backend) }}}
+    cmake --preset {{quote(vd_preset)}} {{if vd_backend == "" { "" } else { quote("-DVD_BACKEND=" + vd_backend) }}} \
+        -DVD_TRACY={{if tracy == "off" { "OFF" } else { "ON" }}} -DVD_TRACY_CALLSTACK={{tracy_callstack}}
 
 # Unity build + archive merge. FFmpeg must already be built.
 build-shim: configure-vd
@@ -86,7 +117,7 @@ build-shaders:
     echo "Shaders: $PWD/build/shaders/"
 
 # Build desktop app
-build-desktop: fmt build-shim prepare-sdl build-shaders
+build-desktop: fmt build-shim prepare-sdl prepare-tracy build-shaders
     #!/usr/bin/env bash
     set -euo pipefail
     sdl_link_flags=$(< build/desktop/sdl-link-flags)
@@ -95,14 +126,15 @@ build-desktop: fmt build-shim prepare-sdl build-shaders
     if [[ "$commit" != unknown && -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
         commit="$commit-dirty"
     fi
-    odin build desktop/ {{quote(odin_ext_collection)}} -out:build/squeeze-desktop -debug \
+    odin build desktop/ {{quote(odin_ext_collection)}} -out:build/squeeze-desktop -debug {{odin_tracy_define}} \
         -define:SQUEEZE_COMMIT="\"$commit\"" -define:SQUEEZE_DEPS_CONFIG="\"{{vd_config}}\"" \
+        -define:SQUEEZE_TRACY_MODE="\"{{tracy}}\"" \
         -extra-linker-flags:"$sdl_link_flags"
     echo "Desktop binary: $PWD/build/squeeze-desktop"
 
 # Check desktop Odin code with the same collections and selected prebuilt libraries
 check-desktop: build-shim prepare-sdl
-    odin check desktop/ {{quote(odin_ext_collection)}}
+    odin check desktop/ {{quote(odin_ext_collection)}} {{odin_tracy_define}}
 
 # Build and run desktop app
 run-desktop: build-desktop
@@ -111,7 +143,7 @@ run-desktop: build-desktop
 # ── Dependencies ─────────────────────────────
 
 # Build matching vendored dependencies explicitly (run once per configuration)
-build-deps: build-ffmpeg build-sdl
+build-deps: build-ffmpeg build-sdl build-tracy
 
 # Format Odin source
 fmt:
@@ -128,7 +160,7 @@ clean:
     rm -rf cmake-build-*/
     @echo "Project artifacts removed; build/deps/ preserved."
 
-# Clean everything, including FFmpeg, SDL3, and shadercross
+# Clean everything, including FFmpeg, SDL3, shadercross, and the Tracy client
 clean-all:
     rm -rf build/ cmake-build-*/
     @echo "All build artifacts removed; dependencies must be rebuilt."

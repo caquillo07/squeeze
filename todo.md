@@ -18,10 +18,10 @@ capacity rather than usage, and unused fields print zeros.
 
 ## Three Views
 
-| View | Role | Mechanism |
-|---|---|---|
-| Shutdown report | The receipt: what ran and what it cost | Small session aggregates, curated printer |
-| Timeline trace | The story: when work happened and overlapped | Tracy (cross-platform), opt-in builds |
+| View              | Role                                                         | Mechanism                                                  |
+|-------------------|--------------------------------------------------------------|------------------------------------------------------------|
+| Shutdown report   | The receipt: what ran and what it cost                       | Small session aggregates, curated printer                  |
+| Timeline trace    | The story: when work happened and overlapped                 | Tracy (cross-platform), on in Debug, off in Release       |
 | External profiler | The evidence: where CPU/memory/GPU/system time actually went | macOS: Instruments. Linux (later): perf/Hotspot, heaptrack |
 
 The report and traces use the same stage names and boundaries.
@@ -40,8 +40,8 @@ The report and traces use the same stage names and boundaries.
 
 ## Phases
 
-### Phase 1 — Meaningful Shutdown Report  ← start here
-- [x] Define measurement contracts for the initial stages (table below; also as comments on `Frame_Stages`)
+### Phase 1 — Meaningful Shutdown Report  ✓
+- [x] Define measurement contracts for the initial stages (table below; also as comments on `Stage` in `desktop/trace.odin`)
 - [x] Separate live state (last frame, playback position) from session aggregates
 - [x] Per timed stage collect only count, total ticks, max ticks; derive total/mean/worst at shutdown
 - [x] Split `frame_draw` into texture upload, render commands, and present call
@@ -64,34 +64,44 @@ The report and traces use the same stage names and boundaries.
 - [x] Verify the report on a real run
 - [x] Report reads in order: Run, Startup, Frames (stages in execution order, untimed remainder, frame total last), Shutdown, Memory
 - [x] `just fmt` passes an absolute `-config:`; odinfmt silently ignored `odinfmt.json` when its path lookup failed (sandbox `filepath.abs` permission error)
-- [ ] Decide Release behavior: collection is negligible (recommend always on); separately decide whether Release prints the report at exit
+- [x] Release behavior: collection always on (negligible); report printed in every build for now, hide later if it gets annoying
 - [x] Measure instrumentation overhead: measured at exit in the running build and printed per frame. ~140–160 ns/frame upper bound (~0.002% of a frame) in both `-debug` and `-o:speed`; clock read ~9.5 ns dominates. The measurement procedure is `optimization_mode="none"` because `-o:speed` folded the loops and reported 0 ns
 
 Initial stage contracts (wall-clock monotonic ticks, displayed in ms):
 
-| Stage | Boundary | Notes |
-|---|---|---|
-| Frame interval | Between consecutive loop starts | Pacing, not cost |
-| Input processing | Reset input state + drain SDL events | |
-| App update | `app_update_and_render` call | Count excludes paused frames |
-| Texture upload | `SDL_UpdateTexture` call | |
-| Render commands | Clear + texture draw submission | Not GPU execution |
-| Present call | `SDL_RenderPresent` call | May include vsync/compositor waiting |
+| Stage            | Boundary                             | Notes                                |
+|------------------|--------------------------------------|--------------------------------------|
+| Frame interval   | Between consecutive loop starts      | Pacing, not cost                     |
+| Input processing | Reset input state + drain SDL events |                                      |
+| App update       | `app_update_and_render` call         | Count excludes paused frames         |
+| Texture upload   | `SDL_UpdateTexture` call             |                                      |
+| Render commands  | Clear + texture draw submission      | Not GPU execution                    |
+| Present call     | `SDL_RenderPresent` call             | May include vsync/compositor waiting |
 
 ### Phase 2 — Tracy Traces
 Decided: Tracy **0.14.1**. Vendor and build the **client** only; the **viewer** is a
 developer-installed tool (official prebuilt binaries exist for macOS, Linux, Windows),
 not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's README).
 - [x] macOS viewer 0.14.1 runs: binaries are ad-hoc signed, not notarized; clear quarantine and re-sign the `.app` ad-hoc
-- [ ] Document viewer setup: version, download source, install outside the repo, macOS quarantine/re-sign steps; viewer and client versions must match
-- [ ] Vendor Tracy 0.14.1 client source (`public/`) under `ext/`; record version, checksum, license
-- [ ] Vendor `odin-tracy` at a pinned commit; verify it targets the 0.14.1 C API, how it links, and how it compiles out
-- [ ] Build the client explicitly into a static archive with matching Debug/Profile flags; foreign import points at our archive (as with `odin-sdl3`)
-- [ ] Opt-in only: disabled builds have no Tracy code, no listening socket
-- [ ] One frame mark plus zones for the six report stages, using the same names/boundaries as the shutdown report
-- [ ] Verify capture in the viewer on macOS; cross-check zone totals against the shutdown report; measure overhead
-- [ ] Evaluate plots (arena usage) and the profiled-allocator wrapper, if the bindings provide one
-- [ ] Check macOS limits: sampling, context switches, Metal GPU zones
+- [x] Document viewer setup (`ext/tracy.README.md`): version, download, install outside the repo, macOS quarantine/re-sign; viewer and client versions must match
+- [ ] Later: consider the Homebrew `tracy` formula vs. release binaries for the viewer (version must match the vendored client)
+- [x] Vendor Tracy 0.14.1 client source (`ext/tracy/public`); version, checksum, license recorded
+- [x] Vendor `odin-tracy` (targets 0.14.1); foreign import points at our static archive; unreferenced and unlinked when disabled
+- [x] `scripts/build_tracy.sh`: one-TU client into `build/deps/tracy/{debug,release}/{on,startup}/libtracy.a` (Debug -O2 -g, Release -O3), incremental; `just build-tracy` builds both modes, included in `build-deps`
+- [x] Off builds (`tracy=off`) verified to contain no Tracy C symbols
+- [x] `just smoke-tracy`: bindings link and run (zones, frame marks, plots)
+- [x] Frame mark at loop start plus zones for the five report stages, same names/boundaries; arena used plotted
+- [x] Verify capture in the viewer on macOS; zone stats agree with the shutdown report
+- [x] One instrumentation API (`desktop/trace.odin`): `stage_begin/end/scope` feed report + Tracy; `trace_begin/end/scope` for Tracy-only nested detail; `frame_begin`; app code no longer calls Tracy directly
+- [x] `tracy_callstack` just variable (`-define:TRACY_CALLSTACK=N`)
+- [x] Tracy modes: `on` (default unless release; `TRACY_ON_DEMAND`), `startup` (buffer from launch), `off` (default for release); all localhost-only; mode printed in the run report
+- [x] `trace_init()` is the first line of `main` (names the thread before any zone; the client itself starts at load). `TRACY_NO_EXIT=1` only for short `startup` captures: it can hang exit with no viewer
+- [x] Trace into VD: `core/vd/vd_trace.h` (`trace_begin/trace_end`, same names as Odin) over `TracyC.h`; `VD_TRACY` CMake option in presets + from `just`; libvd.a only references the single client; tests link it when on. Zones in `vd_hello`/`vd_backend_describe`
+- [x] VD zones (`vd_hello`, `vd_backend_describe`) visible on the main thread with `tracy=startup`; nesting under a stage verified once VD runs inside one (decoder)
+- [ ] Zones around FFmpeg calls when the decoder exists
+- [ ] **Next:** allocation tracking everywhere. Odin arenas: own profiled wrapper, named pools, `free_all` → discard (odin-tracy's wrapper ignores `Free_All`). SDL: `SDL_SetMemoryFunctions`. FFmpeg: configure `--malloc-prefix` hooks implemented in VD (confirmed the option exists)
+- [x] macOS limits: Tracy shows only threads that emit zones (no sampling/context switches on macOS); SDL/Metal/system threads → Instruments. Our future threads: name + zones
+- [ ] Metal GPU zones: when the GPU renderer is active
 - [ ] Extend zones across the media pipeline and threads as they appear
 
 ### Phase 3 — Profile Build and Platform Profilers
@@ -106,7 +116,8 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [ ] Record build/config/input identity; report distributions, throughput, memory; understand variation before thresholds
 
 ### Phase 5 — Reusable Blueprint
-- [ ] Document entry points and CPU/memory/trace/benchmark workflows under `docs/references/`
+- [x] Started `docs/references/profiling.md`: report, trace API, Tracy, platform tools, pitfalls
+- [ ] Extend with Instruments, allocation, and benchmark workflows as they land
 - [ ] Record what each tool measures, what it cannot see, and how integration was verified
 - [ ] Capture and explain a representative baseline
 
@@ -122,12 +133,11 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 ## Current Status
 
 **Completed:**
-- Approach agreed: three views, metric contracts, minimal aggregates
-- Tracy decided: vendor 0.14.1 client + odin-tracy; viewer installed per machine (macOS viewer verified after quarantine removal + ad-hoc re-sign)
-- `Stage_Stats`/`Frame_Stages` session aggregates and aligned stage table, verified on real runs
+- Phase 1: curated shutdown report (run context, startup, frames, shutdown, memory), arena usage, instrumentation overhead
+- Phase 2 core: Tracy 0.14.1 client + odin-tracy vendored; modes on/startup/off; one trace API for report + Tracy; VD C zones via `vd_trace.h`; verified in the viewer
 
 **In Progress:**
-- Phase 1 — verify curated report on a real run; then arena usage and overhead
+- Phase 2: allocation tracking (next)
 
 ## Known Issue — Continuous Redraw Loop
 Window moves are jerky. The loop redraws a static image every frame and spends ~85% of
@@ -139,17 +149,19 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - [ ] Keep running continuously (display-paced, vsync on) while anything animates or plays
 - [ ] Redraw during live resize via an event watch on expose events, if needed
 - [ ] Report: presented vs skipped frames, time spent waiting for events
+- [ ] Re-check idle CPU after the change: Activity Monitor shows ~30% of one core for a static image (all threads; main thread works ~15%). Investigate (Tracy off vs on, Time Profiler by thread) only if it does not drop substantially
 
 ## Next Session
-1. Done: the ~90 ms event-pump stall is at frame 2 (startup), alongside `WINDOW_PIXEL_SIZE_CHANGED` — window appearing/scaling, not our code.
-2. Done: arena usage and peaks.
-3. Done: instrumentation overhead measured each run; decide Release printing.
-4. Then Phase 2: document viewer setup, vendor Tracy 0.14.1 client + odin-tracy, one frame mark and the six stage zones.
+1. Allocation tracking: Odin arena wrapper (named pools, `free_all` → discard) first, verified in Tracy's Memory view; then SDL; then FFmpeg via `--malloc-prefix`.
+2. Then: event-driven loop (known issue), with Tracy before/after.
+3. Then: Phase 3 Profile build + Instruments workflows.
 
 ## First Findings (Debug build, dummy workload)
 - ~82% of session time is inside `SDL_RenderPresent` — waiting, not work. We redraw a static image ~129×/s; battery fix later: skip presenting when nothing changed.
 - Texture upload: ~0.65–0.85 ms per 3.7 MB frame, re-uploaded every frame; becomes the real per-frame cost with video.
-- Worst frame (~100 ms) coincides with a ~100 ms input drain: SDL event pump blocked (likely window activation or macOS move/resize modal loop). A trace will show when.
+- The ~90–100 ms worst frame is at startup (frame 2), alongside `WINDOW_PIXEL_SIZE_CHANGED`: window appearing/scaling, not our code.
+- Instrumentation costs ≤ ~150 ns/frame (~0.002%).
+- Idle CPU is ~30% of one core across all threads (Activity Monitor) while showing a static image.
 
 **Blocked:**
 - Decode benchmarks and pipeline metrics require the real media pipeline
@@ -160,6 +172,11 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - Odin `%Ns` width counts bytes, not runes: `µ` (2 bytes) misaligns columns. Build fixed-width strings instead.
 - `vmem` growing arena: `free_all` releases extra blocks (reserved shrinks), keeps the first block's committed pages, and zeroes its used bytes — a per-frame memset proportional to scratch use.
 - Tracy's macOS binaries are ad-hoc signed and not notarized; Gatekeeper reports the quarantined `.app` as "damaged" until quarantine is cleared and it is re-signed ad-hoc.
+- Microbenchmarks: `-o:speed` folded redundant loops to 0 ns; measure with the loop procedure unoptimized and the measured procedures optimized.
+- Odin omits unreferenced foreign imports at link time: with `TRACY_ENABLE` false the client archive is not needed or linked.
+- `-define` values that look like integers become integers; quote string defines (e.g. all-digit commit hashes).
+- The Tracy client starts at program load; `on` (`TRACY_ON_DEMAND`) discards everything before the viewer connects, so startup needs `tracy=startup`.
+- Activity Monitor's % CPU is per core; btop's process Cpu% is of the whole machine (×10 cores on M1 Max). Tracy's CPU usage track is coarse (~200 ms samples).
 
 ## Completion Checklist
 - [ ] Agreed scope verified with representative workloads

@@ -1,4 +1,5 @@
 #include "vd.h"
+#include "vd_trace.h"
 
 #if defined(VD_BACKEND_FFMPEG) && defined(VD_BACKEND_STUB)
 #error "Select exactly one VD backend"
