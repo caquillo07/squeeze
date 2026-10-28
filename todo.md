@@ -99,7 +99,13 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [x] Trace into VD: `core/vd/vd_trace.h` (`trace_begin/trace_end`, same names as Odin) over `TracyC.h`; `VD_TRACY` CMake option in presets + from `just`; libvd.a only references the single client; tests link it when on. Zones in `vd_hello`/`vd_backend_describe`
 - [x] VD zones (`vd_hello`, `vd_backend_describe`) visible on the main thread with `tracy=startup`; nesting under a stage verified once VD runs inside one (decoder)
 - [ ] Zones around FFmpeg calls when the decoder exists
-- [ ] **Next:** allocation tracking everywhere. Odin arenas: own profiled wrapper, named pools, `free_all` → discard (odin-tracy's wrapper ignores `Free_All`). SDL: `SDL_SetMemoryFunctions`. FFmpeg: configure `--malloc-prefix` hooks implemented in VD (confirmed the option exists)
+- [x] Odin arenas tracked: `tracked_arena_allocator` (desktop/trace.odin), named pools `permanent`/`scratch`, `free_all` → pool discard, moved resizes keep the old block live, allocation callstacks (`tracy_alloc_callstack`, default 16); identity when Tracy is off. Verified headlessly (alloc, in-place/moved resize, rejected free, free_all)
+- [x] Verified in Tracy's Memory view: `permanent`/`scratch` pools, 3.5 MB frame buffer, scratch emptying each frame; C (SDL) frames symbolicate
+- [ ] **Odin frames missing from callstacks**: Odin omits frame pointers on macOS arm64 (no `"frame-pointer"` IR attribute; `x29` never set), and Tracy's macOS client walks frame pointers via `backtrace()`. Unwind tables are fine (libunwind walks Odin frames). Still present in `dev-2026-10-nightly:84bc3fc`. Draft issue + repro: `docs/upstream/odin-frame-pointers/`
+- [ ] Loud arena free guard: install the arena wrapper in all Debug builds (not only Tracy), log an error with the call site on every `free`; fix our own hits (e.g. `log.destroy_console_logger` at shutdown); switch to an assert once runs are clean
+- [x] Callstack depths enforced 0..62 at compile time (Odin `#assert`s, C `#error` in `vd_trace.h`)
+- [ ] SDL allocations: `SDL_SetMemoryFunctions`
+- [ ] FFmpeg allocations: configure `--malloc-prefix` hooks implemented in VD (option confirmed in vendored configure)
 - [x] macOS limits: Tracy shows only threads that emit zones (no sampling/context switches on macOS); SDL/Metal/system threads → Instruments. Our future threads: name + zones
 - [ ] Metal GPU zones: when the GPU renderer is active
 - [ ] Extend zones across the media pipeline and threads as they appear
@@ -137,7 +143,7 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - Phase 2 core: Tracy 0.14.1 client + odin-tracy vendored; modes on/startup/off; one trace API for report + Tracy; VD C zones via `vd_trace.h`; verified in the viewer
 
 **In Progress:**
-- Phase 2: allocation tracking (next)
+- Phase 2: allocation tracking. Odin arenas done and verified; Odin callstack frames blocked on frame pointers (see Next Session)
 
 ## Known Issue — Continuous Redraw Loop
 Window moves are jerky. The loop redraws a static image every frame and spends ~85% of
@@ -152,9 +158,10 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - [ ] Re-check idle CPU after the change: Activity Monitor shows ~30% of one core for a static image (all threads; main thread works ~15%). Investigate (Tracy off vs on, Time Profiler by thread) only if it does not drop substantially
 
 ## Next Session
-1. Allocation tracking: Odin arena wrapper (named pools, `free_all` → discard) first, verified in Tracy's Memory view; then SDL; then FFmpeg via `--malloc-prefix`.
-2. Then: event-driven loop (known issue), with Tracy before/after.
-3. Then: Phase 3 Profile build + Instruments workflows.
+1. **Odin frame pointers:** re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
+2. Loud arena free guard (all Debug builds), fix our own hits.
+3. SDL allocations (`SDL_SetMemoryFunctions`), then FFmpeg (`--malloc-prefix`).
+4. Then: event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
 
 ## First Findings (Debug build, dummy workload)
 - ~82% of session time is inside `SDL_RenderPresent` — waiting, not work. We redraw a static image ~129×/s; battery fix later: skip presenting when nothing changed.
@@ -176,6 +183,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - Odin omits unreferenced foreign imports at link time: with `TRACY_ENABLE` false the client archive is not needed or linked.
 - `-define` values that look like integers become integers; quote string defines (e.g. all-digit commit hashes).
 - The Tracy client starts at program load; `on` (`TRACY_ON_DEMAND`) discards everything before the viewer connects, so startup needs `tracy=startup`.
+- Odin on macOS arm64 omits frame pointers: `backtrace()` and Tracy callstacks skip Odin frames; libunwind still walks them (unwind tables are correct).
 - Activity Monitor's % CPU is per core; btop's process Cpu% is of the whole machine (×10 cores on M1 Max). Tracy's CPU usage track is coarse (~200 ms samples).
 
 ## Completion Checklist

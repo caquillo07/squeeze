@@ -12,5 +12,10 @@
 //     trace_end(zone);
 #include <tracy/TracyC.h>
 
+// Only defined when Tracy is enabled.
+#if defined(TRACY_CALLSTACK) && (TRACY_CALLSTACK < 0 || TRACY_CALLSTACK > 62)
+#error "TRACY_CALLSTACK must be 0..62 (Tracy's portable limit)"
+#endif
+
 #define trace_begin(zone, name) TracyCZoneN(zone, name, 1)
 #define trace_end(zone) TracyCZoneEnd(zone)

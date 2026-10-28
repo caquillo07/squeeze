@@ -1,5 +1,7 @@
 package main
 
+import "core:c"
+import "core:mem"
 import tracy "ext:odin-tracy"
 
 // One instrumentation API for the app. A stage feeds both the shutdown report
@@ -107,4 +109,73 @@ trace_scope :: proc(name: string, loc := #caller_location) -> tracy.ZoneCtx {
 trace_plot_bytes :: proc(name: cstring, bytes: uint) {
 	tracy.PlotI(name, i64(bytes))
 	return
+}
+
+// Stack frames captured per tracked allocation; separate from zones (TRACY_CALLSTACK)
+// because allocations are rare and "who allocated this" needs a stack.
+ALLOC_CALLSTACK :: #config(SQUEEZE_ALLOC_CALLSTACK, 16)
+// Tracy asserts depth < 63 on Windows and libunwind; macOS does not check. Enforce
+// the portable range here so a bad just variable fails the build, not a capture.
+#assert(ALLOC_CALLSTACK >= 0 && ALLOC_CALLSTACK <= 62, "SQUEEZE_ALLOC_CALLSTACK must be 0..62")
+#assert(tracy.TRACY_CALLSTACK >= 0 && tracy.TRACY_CALLSTACK <= 62, "TRACY_CALLSTACK must be 0..62")
+
+// Reports an arena's allocations to Tracy's Memory view as a named pool. Arenas never
+// free individually: free_all discards the whole pool. A resize that moves leaves the
+// old block live, as the arena does, until the next free_all. Temp-scope rewinds
+// (arena_temp_end) bypass the allocator, so their allocations stay listed until then.
+Tracked_Arena :: struct {
+	backing: mem.Allocator,
+	// Tracy identifies pools by this pointer; use a string literal.
+	pool:    cstring,
+}
+
+// Without Tracy, returns the backing allocator unchanged: no wrapper, no cost.
+tracked_arena_allocator :: proc(tracked: ^Tracked_Arena, backing: mem.Allocator, pool: cstring) -> mem.Allocator {
+	when !tracy.TRACY_ENABLE {
+		return backing
+	}
+	tracked^ = {
+		backing = backing,
+		pool    = pool,
+	}
+	return mem.Allocator{procedure = tracked_arena_allocator_proc, data = tracked}
+}
+
+tracked_arena_allocator_proc :: proc(
+	allocator_data: rawptr,
+	mode: mem.Allocator_Mode,
+	size, alignment: int,
+	old_memory: rawptr,
+	old_size: int,
+	location := #caller_location,
+) -> (
+	[]byte,
+	mem.Allocator_Error,
+) {
+	tracked := (^Tracked_Arena)(allocator_data)
+	data, err := tracked.backing.procedure(tracked.backing.data, mode, size, alignment, old_memory, old_size, location)
+	if err != nil {
+		return data, err
+	}
+	switch mode {
+	case .Alloc, .Alloc_Non_Zeroed:
+		if data != nil {
+			tracy.AllocN(raw_data(data), c.size_t(size), tracked.pool, ALLOC_CALLSTACK)
+		}
+	case .Resize, .Resize_Non_Zeroed:
+		if old_memory != nil && raw_data(data) == old_memory {
+			// Grew or shrank in place: same address, new size.
+			tracy.FreeN(old_memory, tracked.pool, ALLOC_CALLSTACK)
+		}
+		if data != nil {
+			tracy.AllocN(raw_data(data), c.size_t(size), tracked.pool, ALLOC_CALLSTACK)
+		}
+	case .Free:
+		// Arenas reject individual frees, so err above already returned for them.
+		tracy.FreeN(old_memory, tracked.pool, ALLOC_CALLSTACK)
+	case .Free_All:
+		tracy.MemoryDiscard(tracked.pool)
+	case .Query_Features, .Query_Info:
+	}
+	return data, err
 }

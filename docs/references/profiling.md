@@ -41,6 +41,10 @@ instrumentation for it; "not executed" means it ran zero times.
 - `trace_begin("name")` / `trace_end(zone)` or `trace_scope("name")`: Tracy-only
   detail; nests anywhere.
 - `frame_begin`: frame counter, frame interval, Tracy frame mark.
+- `tracked_arena_allocator`: each arena is a named pool in Tracy's Memory view, with
+  allocation callstacks (default depth 16, `just tracy_alloc_callstack=N`); `free_all`
+  discards the pool. Identity when Tracy is off. In `on` mode, allocations made before
+  the viewer connects are unknown to it; use `tracy=startup` to see startup memory.
 - C (VD): `core/vd/vd_trace.h` `trace_begin(zone, "name")` / `trace_end(zone)`; same
   timeline, single client. Stages stay app-only.
 

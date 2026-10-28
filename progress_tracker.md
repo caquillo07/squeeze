@@ -6,7 +6,9 @@
 - Phase 1 done: curated shutdown report (`desktop/run_report.odin`) with build/dependency identity queried at runtime, startup/shutdown lifecycle, per-stage frame aggregates with worst frame, arena used/committed/reserved peaks with growth/release counts, and self-measured instrumentation overhead (≤ ~150 ns/frame).
 - Phase 2 core done: Tracy 0.14.1 client + odin-tracy vendored and built from source; modes `on` (Debug default, on-demand), `startup`, `off` (Release default), localhost-only. One trace API (`desktop/trace.odin`) feeds both the report and Tracy; VD C zones via `core/vd/vd_trace.h`. Verified in the viewer; zone stats agree with the report.
 - Findings: ~82% of loop time waiting in present while redrawing a static image; ~30% of one core at idle across threads; startup stall is the window appearing, not our code.
-- Next: allocation tracking (Odin arenas, SDL, FFmpeg), then the event-driven loop.
+- Arena allocations tracked in Tracy's Memory view as named pools (identity when Tracy is off). Callstack depths enforced at compile time.
+- Found: Odin omits frame pointers on macOS arm64, so frame-pointer stack walks (backtrace, Tracy callstacks) skip Odin frames; unwind tables are fine. Draft upstream issue + repro in `docs/upstream/odin-frame-pointers/`.
+- Next: file/decide on the frame-pointer issue, loud arena free guard, SDL and FFmpeg allocation tracking, then the event-driven loop.
 
 ## Completed: Desktop Debugging (2026-09-30 → 2026-10-27)
 

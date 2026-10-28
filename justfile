@@ -15,7 +15,9 @@ odin_ext_collection := "-collection:ext=" + justfile_directory() + "/ext"
 tracy := if vd_config == "release" { "off" } else { "on" }
 # Stack frames captured per Tracy zone/allocation; 0 is none. Costly: just tracy_callstack=8 run-desktop
 tracy_callstack := "0"
-odin_tracy_define := if tracy == "off" { "" } else if tracy == "on" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack } else if tracy == "startup" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack } else { error("tracy must be on, startup, or off") }
+# Stack frames captured per tracked arena allocation (Tracy Memory view); rare, so on by default
+tracy_alloc_callstack := "16"
+odin_tracy_define := if tracy == "off" { "" } else if tracy == "on" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack + " -define:SQUEEZE_ALLOC_CALLSTACK=" + tracy_alloc_callstack } else if tracy == "startup" { "-define:TRACY_ENABLE=true -define:TRACY_CALLSTACK=" + tracy_callstack + " -define:SQUEEZE_ALLOC_CALLSTACK=" + tracy_alloc_callstack } else { error("tracy must be on, startup, or off") }
 
 # ──────────────────────────────────────────────
 

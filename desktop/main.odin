@@ -65,8 +65,10 @@ main :: proc() {
 	scratch_allocator := vmem.arena_allocator(&scratch_arena)
 
 	// Own all temp memory — tprintf and friends go through our scratch arena
-	context.allocator = permanent_allocator
-	context.temp_allocator = scratch_allocator
+	// Tracy Memory view: each arena is a named pool (unwrapped when Tracy is off).
+	tracked_permanent, tracked_scratch: Tracked_Arena
+	context.allocator = tracked_arena_allocator(&tracked_permanent, permanent_allocator, "permanent")
+	context.temp_allocator = tracked_arena_allocator(&tracked_scratch, scratch_allocator, "scratch")
 
 	context.logger = log.create_console_logger()
 

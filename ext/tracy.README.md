@@ -22,6 +22,7 @@ just run-desktop                  # Debug: Tracy on, collects while a viewer is 
 just tracy=startup run-desktop    # buffer from launch, to capture startup
 just tracy=off run-desktop        # no Tracy code at all
 just tracy_callstack=8 run-desktop  # also capture 8 stack frames per zone (costly)
+just tracy_alloc_callstack=32 run-desktop  # deeper allocation stacks (default 16)
 ```
 
 Modes (`tracy` just variable; the run report prints the active one):
@@ -58,6 +59,11 @@ App code never calls Tracy directly; it uses `desktop/trace.odin`:
   Tracy-only detail zones; nest anywhere, including inside stages.
 - `frame_begin` marks the Tracy frame at the report's frame-interval boundary.
 - `trace_plot_bytes`: arena used bytes plotted as `permanent_used`, `scratch_used`.
+- `tracked_arena_allocator`: wraps each arena so allocations appear in Tracy's
+  Memory view as named pools `permanent` and `scratch`, each with a callstack
+  (`SQUEEZE_ALLOC_CALLSTACK`, default 16). `free_all` discards the pool; moved resizes
+  keep the old block live like the arena does; temp-scope rewinds are not reported
+  until the next `free_all`. Returns the arena allocator unchanged when Tracy is off.
 
 Compare Tracy's zone statistics against the shutdown report; both should agree.
 
