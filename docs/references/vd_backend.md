@@ -21,6 +21,11 @@ buffers use arenas or caller-owned storage; backend-owned resources are released
 through the backend's matching APIs. Document pixel-buffer lifetime and capacity.
 Exact signatures are deferred until the first-frame implementation.
 
+`vd_backend_describe(buffer, capacity)` reports the linked backend and its library
+versions, queried at runtime, into caller-owned storage (snprintf semantics). The
+desktop run report prints it; the public smoke test checks it names the configured
+backend, so a stale archive for the other backend fails.
+
 ## Compile-Time Selection
 
 Layout:

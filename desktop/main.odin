@@ -6,8 +6,6 @@ import "core:fmt"
 import "core:log"
 import "core:mem"
 import vmem "core:mem/virtual"
-import "core:reflect"
-import "core:strings"
 import sdl "ext:odin-sdl3"
 
 WindowAppName :: "vdbg"
@@ -16,67 +14,13 @@ WindowHeight :: 720
 
 MainFontSize :: 38
 
-Runtime_Stats :: struct {
-	// Platform related timings
-	platform_init_ms:               f64,
-	app_init_ms:                    f64,
-	app_close_ms:                   f64,
-	renderer_init_ms:               f64,
-	basic_renderer_init_ms:         f64,
-	shader_init_ms:                 f64,
-	pipeline_init_ms:               f64,
-
-	// Platform resources
-	permanent_start_reserved_bytes: uint,
-	permanent_reserved_bytes:       uint,
-	scratch_start_reserved_bytes:   uint,
-	scratch_reserved_bytes:         uint,
-
-
-	// Live state: the latest frame only, not a session summary
-	fps:                            f64,
-	prev_frame_ms:                  f64,
-
-	// Playback + Debug
-	current_frame_pts:              f64,
-	current_frame_dts:              f64,
-	current_frame_is_key_frame:     bool,
-}
-
-// Session aggregate for one timed stage. Ticks come from SDL's monotonic performance
-// counter: wall-clock time, including any waiting inside the call, not CPU time.
-// count == 0 means the stage never ran.
-Stage_Stats :: struct {
-	count:       u64,
-	total_ticks: u64,
-	max_ticks:   u64,
-}
-
-// Non-overlapping per-frame stages, summed over the whole session.
-Frame_Stages :: struct {
-	// Loop start to next loop start: pacing, not cost. Skips the first interval,
-	// which measures startup instead. Includes paused frames and debugger stops.
-	frame_interval:  Stage_Stats,
-	// Reset input state and drain SDL events.
-	input:           Stage_Stats,
-	// app_update_and_render call only; not executed while paused.
-	app_update:      Stage_Stats,
-	// SDL_UpdateTexture call.
-	texture_upload:  Stage_Stats,
-	// Clear and texture draw submission; not GPU execution.
-	render_commands: Stage_Stats,
-	// SDL_RenderPresent call; may include vsync/compositor waiting.
-	present:         Stage_Stats,
-}
-
 Platform :: struct {
 	clock_freq:     f64,
 	gpu_renderer:   GPU_Renderer,
 	basic_renderer: Basic_Renderer,
 	app:            App_State,
 	app_input:      App_Input,
-	runtime_stats:  Runtime_Stats,
-	frame_stages:   Frame_Stages,
+	stats:          Run_Stats,
 
 	// fonts - todo(hector) move to...?
 	//	main_font:      ^ttf.Font,
@@ -91,9 +35,8 @@ main :: proc() {
 	defer {
 		// too lazy to come up with somehting better, but good enough for now.
 		platform_close_ended_at := time_now()
-		platform.runtime_stats.app_close_ms = elapsed_from_ms(platform_close_started_at, platform_close_ended_at)
-		platform_print_runtime_metrics(platform.runtime_stats)
-		print_frame_stages(platform.frame_stages)
+		lifecycle_record(.Platform_Teardown, platform_close_started_at, platform_close_ended_at)
+		print_run_report(&platform.stats)
 
 		// meh, wont get counted, fix later
 		log.destroy_console_logger(context.logger)
@@ -126,10 +69,15 @@ main :: proc() {
 	context.logger = log.create_console_logger()
 
 	// Track arena sizes so we can warn on growth and tune initial sizes
-	platform.runtime_stats.permanent_start_reserved_bytes = permanent_arena.total_reserved
-	platform.runtime_stats.permanent_reserved_bytes = permanent_arena.total_reserved
-	platform.runtime_stats.scratch_start_reserved_bytes = scratch_arena.total_reserved
-	platform.runtime_stats.scratch_reserved_bytes = scratch_arena.total_reserved
+	platform.stats.permanent_arena = {
+		initial_reserved = permanent_arena.total_reserved,
+		reserved         = permanent_arena.total_reserved,
+	}
+	platform.stats.scratch_arena = {
+		initial_reserved = scratch_arena.total_reserved,
+		reserved         = scratch_arena.total_reserved,
+	}
+	run_info_capture_backend(&platform.stats.info)
 	log.infof("Permanent arena: %s reserved", format_bytes(permanent_arena.total_reserved))
 	log.infof("Scratch arena: %s reserved", format_bytes(scratch_arena.total_reserved))
 
@@ -140,6 +88,10 @@ main :: proc() {
 	if !sdl.Init({.VIDEO, .AUDIO}) {
 		log_sdl_fatal("failed to init SDL")
 	}
+
+	platform.stats.info.sdl_version = sdl.GetVersion()
+	platform.stats.info.sdl_revision = string(sdl.GetRevision())
+
 	defer sdl.Quit()
 
 	//	if !ttf.Init() {
@@ -164,7 +116,7 @@ main :: proc() {
 	//	}
 
 	platform_init_ended_at := time_now()
-	platform.runtime_stats.platform_init_ms = elapsed_from_ms(platform_init_at, platform_init_ended_at)
+	lifecycle_record(.Platform_Startup, platform_init_at, platform_init_ended_at)
 
 	// Main loop and Frame timing
 	// todo(hector) - make these timings be scope based as well, like niice
@@ -181,9 +133,11 @@ main :: proc() {
 			pixels[i + 3] = 255
 		}
 	}
+	platform.stats.info.workload = fmt.aprintf("synthetic solid-color frame, %d×%d RGBA", WindowWidth, WindowHeight)
 
 	app_init_ended_at := time_now()
-	platform.runtime_stats.app_init_ms = elapsed_from_ms(platform_init_ended_at, app_init_ended_at)
+	lifecycle_record(.App_Setup, platform_init_ended_at, app_init_ended_at)
+	platform.stats.loop_started_at = app_init_ended_at
 
 	last_frame_counter := app_init_ended_at
 	is_first_frame := true
@@ -195,15 +149,20 @@ main :: proc() {
 		{
 			now := time_now()
 			dt = elapsed_from(last_frame_counter, now)
+			platform.stats.frame_index += 1
 			if !is_first_frame {
-				stage_record(&platform.frame_stages.frame_interval, last_frame_counter, now)
+				stage_record(
+					&platform.stats.frames.frame_interval,
+					last_frame_counter,
+					now,
+					platform.stats.frame_index,
+				)
 			}
 			is_first_frame = false
 			last_frame_counter = now
 		}
 
-		platform.runtime_stats.prev_frame_ms = dt * 1000.0
-		platform.runtime_stats.fps = dt > 0 ? 1.0 / dt : 0
+		frame := platform.stats.frame_index
 
 		// Process input events
 		app_input_started_at := time_now()
@@ -260,7 +219,7 @@ main :: proc() {
 			}
 		}
 		frame_input_ended_at := time_now()
-		stage_record(&platform.frame_stages.input, app_input_started_at, frame_input_ended_at)
+		stage_record(&platform.stats.frames.input, app_input_started_at, frame_input_ended_at, frame)
 
 		if button_is_pressed(platform.app_input.buttons[.GlobalGamePause]) {
 			global_pause = !global_pause
@@ -278,7 +237,9 @@ main :: proc() {
 				platform.gpu_renderer.pixel_width,
 				platform.gpu_renderer.pixel_height,
 			)
-			stage_record(&platform.frame_stages.app_update, app_update_started_at, time_now())
+			stage_record(&platform.stats.frames.app_update, app_update_started_at, time_now(), frame)
+		} else {
+			platform.stats.paused_frames += 1
 		}
 
 		if global_pause && is_key_pressed(&platform.app_input, .Cancel) {
@@ -304,21 +265,20 @@ main :: proc() {
 		texture_upload_started_at := time_now()
 		sdl.UpdateTexture(platform.basic_renderer.video_texture, nil, raw_data(pixels), WindowWidth * 4)
 		texture_upload_ended_at := time_now()
-		stage_record(&platform.frame_stages.texture_upload, texture_upload_started_at, texture_upload_ended_at)
+		stage_record(&platform.stats.frames.texture_upload, texture_upload_started_at, texture_upload_ended_at, frame)
 
 		sdl.SetRenderDrawColor(platform.basic_renderer.renderer, 0, 0, 0, 255)
 		sdl.RenderClear(platform.basic_renderer.renderer)
 		sdl.RenderTexture(platform.basic_renderer.renderer, platform.basic_renderer.video_texture, nil, nil)
 		render_commands_ended_at := time_now()
-		stage_record(&platform.frame_stages.render_commands, texture_upload_ended_at, render_commands_ended_at)
+		stage_record(&platform.stats.frames.render_commands, texture_upload_ended_at, render_commands_ended_at, frame)
 
 		sdl.RenderPresent(platform.basic_renderer.renderer)
-		stage_record(&platform.frame_stages.present, render_commands_ended_at, time_now())
+		stage_record(&platform.stats.frames.present, render_commands_ended_at, time_now(), frame)
 
 		// Check for arena growth — means our initial sizes were too small
-		permanent_reserved := platform.runtime_stats.permanent_reserved_bytes
-		platform.runtime_stats.permanent_reserved_bytes = permanent_arena.total_reserved
-		if permanent_arena.total_reserved != permanent_reserved {
+		permanent_reserved := platform.stats.permanent_arena.reserved
+		if arena_stats_update(&platform.stats.permanent_arena, permanent_arena.total_reserved) {
 			log.warnf(
 				"Permanent arena grew: %s -> %s",
 				format_bytes(permanent_reserved),
@@ -326,9 +286,8 @@ main :: proc() {
 			)
 		}
 
-		scratch_reserved := platform.runtime_stats.scratch_reserved_bytes
-		platform.runtime_stats.scratch_reserved_bytes = scratch_arena.total_reserved
-		if scratch_arena.total_reserved != scratch_reserved {
+		scratch_reserved := platform.stats.scratch_arena.reserved
+		if arena_stats_update(&platform.stats.scratch_arena, scratch_arena.total_reserved) {
 			log.warnf(
 				"Scratch arena grew: %s -> %s",
 				format_bytes(scratch_reserved),
@@ -339,25 +298,13 @@ main :: proc() {
 		// Wipe scratch — everything allocated this frame is gone
 		free_all(context.temp_allocator)
 	}
+	platform.stats.loop_ended_at = time_now()
+	run_info_capture_display(&platform.stats.info, platform.basic_renderer.window, platform.basic_renderer.renderer)
 	platform_close_started_at = time_now()
 }
 
 time_now :: proc() -> u64 {
 	return u64(sdl.GetPerformanceCounter())
-}
-
-// Hot path: no allocation, formatting, or logging.
-stage_record :: proc(stage: ^Stage_Stats, start, end: u64) {
-	ticks := end - start
-	stage.count += 1
-	stage.total_ticks += ticks
-	if ticks > stage.max_ticks {
-		stage.max_ticks = ticks
-	}
-}
-
-ticks_to_ms :: proc(ticks: u64) -> f64 {
-	return f64(ticks) / platform.clock_freq * 1000.0
 }
 
 elapsed_ms :: proc(start: u64) -> f64 {
@@ -414,93 +361,4 @@ sdl_log_output_proc :: proc "c" (
 ) {
 	context = (cast(^runtime.Context)userdata)^
 	log.debugf("SDL {} [{}]: {}", category, priority, message)
-}
-
-platform_print_runtime_metrics :: proc(metrics: Runtime_Stats) {
-	fmt.println("\nRuntime stats (one-off wall-clock timings; fps/prev_frame_ms are the last frame only)")
-	fields := reflect.struct_fields_zipped(Runtime_Stats)
-	for field, i in fields {
-		name := field.name
-		value := reflect.struct_field_value(metrics, field)
-		text: string
-		switch v in value {
-		case f64:
-			if strings.has_suffix(name, "_ms") {
-				text = fmt.tprintf("%.3f ms", v)
-			} else if strings.has_suffix(name, "_seconds") {
-				text = fmt.tprintf("%.3f s", v)
-			} else {
-				text = fmt.tprintf("%.3f", v)
-			}
-		case uint:
-			if strings.has_suffix(name, "_bytes") {
-				text = format_bytes(v)
-			} else {
-				text = fmt.tprintf("%v", v)
-			}
-		case:
-			text = fmt.tprintf("%v", value)
-		}
-		fmt.printf("%-30s %12s", name, text)
-		if i % 2 == 1 || i == len(fields) - 1 {
-			fmt.println()
-		} else {
-			fmt.print(" | ")
-		}
-	}
-	return
-}
-
-// Temporary verification table; the curated shutdown report replaces it.
-print_frame_stages :: proc(stages: Frame_Stages) {
-	fmt.println("\nFrame stages (whole session; wall-clock, includes waiting inside calls)")
-	fmt.printf("%-16s %8s %11s %11s %11s\n", "stage", "count", "total", "mean", "worst")
-	print_stage_row("frame_interval", stages.frame_interval)
-	print_stage_row("input", stages.input)
-	print_stage_row("app_update", stages.app_update)
-	print_stage_row("texture_upload", stages.texture_upload)
-	print_stage_row("render_commands", stages.render_commands)
-	print_stage_row("present", stages.present)
-	return
-}
-
-print_stage_row :: proc(name: string, stage: Stage_Stats) {
-	if stage.count == 0 {
-		fmt.printf("%-16s %s\n", name, "not executed")
-		return
-	}
-	total_ms := ticks_to_ms(stage.total_ticks)
-	mean_ms := total_ms / f64(stage.count)
-	worst_ms := ticks_to_ms(stage.max_ticks)
-	// Pad formatted strings, not numbers: this Odin's fmt zero-pads right-aligned numbers.
-	// Durations are already fixed-width; %s width counts bytes, which misaligns "µ".
-	count := fmt.tprintf("%d", stage.count)
-	fmt.printf(
-		"%-16s %8s  %s  %s  %s\n",
-		name,
-		count,
-		format_duration_ms(total_ms),
-		format_duration_ms(mean_ms),
-		format_duration_ms(worst_ms),
-	)
-	return
-}
-
-// Largest unit whose value is at least 1, always two decimals so decimal points align.
-// Fixed width: 10 characters (7-wide number, space, 2-character unit).
-format_duration_ms :: proc(ms: f64) -> string {
-	value := ms
-	unit := "ms"
-	if ms >= 1000.0 {
-		value = ms / 1000.0
-		unit = "s "
-	} else if ms < 0.001 {
-		value = ms * 1_000_000.0
-		unit = "ns"
-	} else if ms < 1.0 {
-		value = ms * 1000.0
-		unit = "µs"
-	}
-	number := fmt.tprintf("%.2f", value)
-	return fmt.tprintf("%7s %s", number, unit)
 }

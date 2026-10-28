@@ -39,7 +39,7 @@ basic_renderer_init :: proc() {
 		log_sdl_fatal("failed to create video texture")
 	}
 	basic_renderer_ended_at := time_now()
-	platform.runtime_stats.basic_renderer_init_ms = elapsed_from_ms(basic_renderer_init_at, basic_renderer_ended_at)
+	lifecycle_record(.Basic_Renderer_Setup, basic_renderer_init_at, basic_renderer_ended_at)
 }
 
 basic_renderer_deinit :: proc() {

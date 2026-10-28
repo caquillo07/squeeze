@@ -48,15 +48,21 @@ The report and traces use the same stage names and boundaries.
 - [x] Define the frame-interval population (first interval skipped; pauses and debugger stops included, documented)
 - [x] Verify stage aggregates on a real run (temporary `print_frame_stages` table): stage means sum to ~99.9% of the frame interval; counts consistent (intervals = frames − 1)
 - [x] Readable durations: largest unit ≥ 1, two decimals, aligned decimal points
-- [ ] Mark inclusive (nested) startup timings so they are not added to their children
-- [ ] Arena capacity: initial, final, max, growth events; usage/high-water only after verifying arena API semantics (scratch sampled before reset)
-- [ ] Curated four-section report: Run context, Lifecycle, Frame/stage summary, Memory & coverage
-  - Run context: build config (Debug/Release), renderer backend, actual vsync state, workload (dummy 1280×720 RGBA), loop duration, frames presented
-  - Lifecycle: indent nested timings and mark them "included above"
-  - Never-executed measurements print "not executed"/"not measured" instead of zeros (GPU init, shader, pipeline, pts/dts)
-  - Drop or relabel live last-frame `fps`/`prev_frame_ms` (86 fps last frame vs ~129 session mean)
-  - Note timer resolution (~41.7 ns ticks) next to sub-microsecond values
-- [ ] Keep the reflection dump only as an optional raw diagnostic
+- [x] Mark inclusive (nested) startup timings so they are not added to their children (`Lifecycle_Step` + `lifecycle_parents`)
+- [x] Worst-case frame number per stage (`worst_frame`)
+- [x] Arena capacity: initial, final, growth events
+- [ ] Arena usage/high-water, only after verifying `vmem.Arena` semantics (scratch sampled before reset)
+- [x] Curated four-section report in `desktop/run_report.odin`: Run, Lifecycle, Frames, Memory. No hand-written state: values are recorded at runtime by the code doing the work
+  - Run: commit (+dirty) and C/deps config via `-define`s from justfile; Odin version/optimization; SDL version/revision and FFmpeg versions queried at runtime; workload set by the content-creating code; renderer, vsync, display refresh captured at loop exit
+  - Lifecycle: nested steps indented and marked "included in …"; unexecuted steps print "not executed"
+  - Live last-frame `fps`/`prev_frame_ms` and unimplemented playback fields removed
+  - Derived: share of loop time inside present; timer resolution
+- [x] `vd_backend_describe` (caller-owned buffer); smoke test asserts the linked backend matches `VD_BACKEND`, and truncation
+- [x] Raw dump behind `SQUEEZE_RAW_STATS=1` (no rebuild)
+- [x] Verify the report on a real run
+- [x] Report reads in order: Run, Startup, Frames (stages in execution order, untimed remainder, frame total last), Shutdown, Memory
+- [x] `just fmt` passes an absolute `-config:`; odinfmt silently ignored `odinfmt.json` when its path lookup failed (sandbox `filepath.abs` permission error)
+- [ ] Decide whether stats collection stays enabled in Release, after measuring overhead
 - [ ] Measure instrumentation overhead
 
 Initial stage contracts (wall-clock monotonic ticks, displayed in ms):
@@ -119,12 +125,23 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - `Stage_Stats`/`Frame_Stages` session aggregates and aligned stage table, verified on real runs
 
 **In Progress:**
-- Phase 1 — curated four-section report (next)
+- Phase 1 — verify curated report on a real run; then arena usage and overhead
+
+## Known Issue — Continuous Redraw Loop
+Window moves are jerky. The loop redraws a static image every frame and spends ~85% of
+its time blocked in `SDL_RenderPresent`, so the main thread rarely sits in the event loop.
+One run also showed a ~1 s `present` stall (likely Metal's drawable timeout while the
+window was occluded/changing displays) and a 139 ms event-pump block during a move.
+- [ ] Experiment: present only on first frame and resize/expose; otherwise wait for events. Confirm jerks disappear
+- [ ] Event-driven loop: redraw only when something changed; block in `SDL_WaitEventTimeout` until the next event or deadline (animation frame, video frame, timer)
+- [ ] Keep running continuously (display-paced, vsync on) while anything animates or plays
+- [ ] Redraw during live resize via an event watch on expose events, if needed
+- [ ] Report: presented vs skipped frames, time spent waiting for events
 
 ## Next Session
-1. Curated shutdown report (see Phase 1 sub-items): run context, lifecycle, stages, memory & coverage.
-2. Arena capacity aggregates; then verify `vmem.Arena` used/high-water semantics before reporting usage.
-3. Measure instrumentation overhead (e.g. N back-to-back `time_now` calls), keep the reflection dump as raw/optional.
+1. Done: the ~90 ms event-pump stall is at frame 2 (startup), alongside `WINDOW_PIXEL_SIZE_CHANGED` — window appearing/scaling, not our code.
+2. Verify `vmem.Arena` used/high-water semantics, then report arena usage.
+3. Measure instrumentation overhead; decide Release behavior.
 4. Then Phase 2: document viewer setup, vendor Tracy 0.14.1 client + odin-tracy, one frame mark and the six stage zones.
 
 ## First Findings (Debug build, dummy workload)

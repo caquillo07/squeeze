@@ -90,7 +90,14 @@ build-desktop: fmt build-shim prepare-sdl build-shaders
     #!/usr/bin/env bash
     set -euo pipefail
     sdl_link_flags=$(< build/desktop/sdl-link-flags)
-    odin build desktop/ {{quote(odin_ext_collection)}} -out:build/squeeze-desktop -debug -extra-linker-flags:"$sdl_link_flags"
+    # Build identity for the run report. Quoted: an all-digit hash would become an integer define.
+    commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+    if [[ "$commit" != unknown && -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        commit="$commit-dirty"
+    fi
+    odin build desktop/ {{quote(odin_ext_collection)}} -out:build/squeeze-desktop -debug \
+        -define:SQUEEZE_COMMIT="\"$commit\"" -define:SQUEEZE_DEPS_CONFIG="\"{{vd_config}}\"" \
+        -extra-linker-flags:"$sdl_link_flags"
     echo "Desktop binary: $PWD/build/squeeze-desktop"
 
 # Check desktop Odin code with the same collections and selected prebuilt libraries
@@ -108,8 +115,10 @@ build-deps: build-ffmpeg build-sdl
 
 # Format Odin source
 fmt:
-    odinfmt -w core/
-    odinfmt -w desktop/
+    # Explicit absolute config: odinfmt's own search silently falls back to defaults
+    # when resolving the path fails (seen in sandboxed shells).
+    odinfmt -config:{{quote(justfile_directory() + "/odinfmt.json")}} -w core/
+    odinfmt -config:{{quote(justfile_directory() + "/odinfmt.json")}} -w desktop/
 
 # ── Utilities ────────────────────────────────
 

@@ -131,7 +131,7 @@ init_renderer :: proc() {
 		log_sdl_fatal("Failed to create sprite sampler")
 	}
 	renderer_ended_at := time_now()
-	platform.runtime_stats.renderer_init_ms = elapsed_from_ms(renderer_init_at, renderer_ended_at)
+	lifecycle_record(.GPU_Device_Setup, renderer_init_at, renderer_ended_at)
 
 	// Pipelines
 	shader_count: int
@@ -145,13 +145,17 @@ init_renderer :: proc() {
 
 	// Report shader compilation time
 	shader_ended_at := time_now()
-	platform.runtime_stats.shader_init_ms = elapsed_from_ms(renderer_ended_at, shader_ended_at)
-	log.infof("Shader compilation: %.2fms (%d shaders)", platform.runtime_stats.shader_init_ms, shader_count)
+	lifecycle_record(.GPU_Shader_Setup, renderer_ended_at, shader_ended_at)
+	log.infof(
+		"Shader compilation: %.2fms (%d shaders)",
+		elapsed_from_ms(renderer_ended_at, shader_ended_at),
+		shader_count,
+	)
 
 	// Sprite pipeline
 	renderer.pipelines[.Frame] = create_frame_pipeline(sprite_vert_shader, sprite_frag_shader)
 	pipelines_ended_at := time_now()
-	platform.runtime_stats.pipeline_init_ms = elapsed_from_ms(shader_ended_at, pipelines_ended_at)
+	lifecycle_record(.GPU_Pipeline_Setup, shader_ended_at, pipelines_ended_at)
 }
 
 deinit_renderer :: proc() {

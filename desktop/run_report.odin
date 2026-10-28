@@ -1,0 +1,414 @@
+package main
+
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import sdl "ext:odin-sdl3"
+
+// Build identity, passed by justfile. Values are quoted there because an all-digit
+// commit hash would otherwise become an integer define.
+BUILD_COMMIT :: #config(SQUEEZE_COMMIT, "unknown")
+// Configuration of the C libraries and dependencies: VD, FFmpeg, SDL3, shadercross.
+BUILD_DEPS_CONFIG :: #config(SQUEEZE_DEPS_CONFIG, "unknown")
+
+// Everything the shutdown report prints. Collected by the code doing the work; no
+// report text is written by hand, so the report follows the code as it changes.
+Run_Stats :: struct {
+	info:            Run_Info,
+	lifecycle:       [Lifecycle_Step]Lifecycle_Timing,
+	frames:          Frame_Stages,
+	// Loop iterations so far; the frame number used for "worst at frame".
+	frame_index:     u64,
+	paused_frames:   u64,
+	loop_started_at: u64,
+	loop_ended_at:   u64,
+	permanent_arena: Arena_Stats,
+	scratch_arena:   Arena_Stats,
+}
+
+// Queried at runtime where possible, so the report shows what actually ran.
+Run_Info :: struct {
+	// Set by the code that creates content; empty means nothing was loaded.
+	workload:           string,
+	backend_text:       [512]u8,
+	backend_length:     int,
+	sdl_version:        i32,
+	sdl_revision:       string,
+	// Renderer/display state is captured when the loop exits, before teardown.
+	renderer_name:      string,
+	vsync:              i32,
+	vsync_known:        bool,
+	display_refresh_hz: f32,
+}
+
+// Session aggregate for one timed stage. Ticks come from SDL's monotonic performance
+// counter: wall-clock time, including any waiting inside the call, not CPU time.
+// count == 0 means the stage never ran.
+Stage_Stats :: struct {
+	count:       u64,
+	total_ticks: u64,
+	max_ticks:   u64,
+	// Frame number where max_ticks happened.
+	worst_frame: u64,
+}
+
+// Non-overlapping per-frame stages, summed over the whole session.
+Frame_Stages :: struct {
+	// Loop start to next loop start: pacing, not cost. Skips the first interval,
+	// which measures startup instead. Includes paused frames and debugger stops.
+	// Attributed to the frame the interval ends at.
+	frame_interval:  Stage_Stats,
+	// Reset input state and drain SDL events.
+	input:           Stage_Stats,
+	// app_update_and_render call only; not executed while paused.
+	app_update:      Stage_Stats,
+	// SDL_UpdateTexture call.
+	texture_upload:  Stage_Stats,
+	// Clear and texture draw submission; not GPU execution.
+	render_commands: Stage_Stats,
+	// SDL_RenderPresent call; may include vsync/compositor waiting.
+	present:         Stage_Stats,
+}
+
+// One-off timings, in report order. Parents are listed in lifecycle_parents.
+Lifecycle_Step :: enum {
+	Platform_Startup,
+	Basic_Renderer_Setup,
+	GPU_Device_Setup,
+	GPU_Shader_Setup,
+	GPU_Pipeline_Setup,
+	App_Setup,
+	Platform_Teardown,
+}
+
+// Nested steps are included in their parent's time; the report marks them so they
+// are not added twice. Keep in sync with where each step is measured.
+lifecycle_parents := [Lifecycle_Step]Maybe(Lifecycle_Step) {
+	.Platform_Startup     = nil,
+	.Basic_Renderer_Setup = .Platform_Startup,
+	.GPU_Device_Setup     = .Platform_Startup,
+	.GPU_Shader_Setup     = .Platform_Startup,
+	.GPU_Pipeline_Setup   = .Platform_Startup,
+	.App_Setup            = nil,
+	.Platform_Teardown    = nil,
+}
+
+lifecycle_names := [Lifecycle_Step]string {
+	.Platform_Startup     = "Platform startup",
+	.Basic_Renderer_Setup = "Basic renderer setup",
+	.GPU_Device_Setup     = "GPU device setup",
+	.GPU_Shader_Setup     = "GPU shader setup",
+	.GPU_Pipeline_Setup   = "GPU pipeline setup",
+	.App_Setup            = "App setup",
+	.Platform_Teardown    = "Platform teardown",
+}
+
+// Report section for each step, so the report reads in the order things happen.
+Lifecycle_Phase :: enum {
+	Startup,
+	Shutdown,
+}
+
+lifecycle_phases := [Lifecycle_Step]Lifecycle_Phase {
+	.Platform_Startup     = .Startup,
+	.Basic_Renderer_Setup = .Startup,
+	.GPU_Device_Setup     = .Startup,
+	.GPU_Shader_Setup     = .Startup,
+	.GPU_Pipeline_Setup   = .Startup,
+	.App_Setup            = .Startup,
+	.Platform_Teardown    = .Shutdown,
+}
+
+Lifecycle_Timing :: struct {
+	ticks:    u64,
+	executed: bool,
+}
+
+// Reserved capacity of a growing virtual-memory arena: address space, not bytes used.
+Arena_Stats :: struct {
+	initial_reserved: uint,
+	reserved:         uint,
+	growth_events:    u64,
+}
+
+// Hot path: no allocation, formatting, or logging.
+stage_record :: proc(stage: ^Stage_Stats, start, end: u64, frame: u64) {
+	ticks := end - start
+	stage.count += 1
+	stage.total_ticks += ticks
+	if ticks > stage.max_ticks {
+		stage.max_ticks = ticks
+		stage.worst_frame = frame
+	}
+	return
+}
+
+lifecycle_record :: proc(step: Lifecycle_Step, start, end: u64) {
+	platform.stats.lifecycle[step] = {
+		ticks    = end - start,
+		executed = true,
+	}
+	return
+}
+
+// Returns true when the arena grew since the last call.
+arena_stats_update :: proc(stats: ^Arena_Stats, reserved: uint) -> bool {
+	if reserved == stats.reserved {
+		return false
+	}
+	stats.reserved = reserved
+	stats.growth_events += 1
+	return true
+}
+
+run_info_capture_backend :: proc(info: ^Run_Info) {
+	length := int(vd_backend_describe(raw_data(info.backend_text[:]), len(info.backend_text)))
+	info.backend_length = min(length, len(info.backend_text) - 1)
+	return
+}
+
+// Call when the loop exits, while the window and renderer still exist.
+run_info_capture_display :: proc(info: ^Run_Info, window: ^sdl.Window, renderer: ^sdl.Renderer) {
+	info.renderer_name = strings.clone_from_cstring(sdl.GetRendererName(renderer))
+	vsync: i32
+	info.vsync_known = sdl.GetRenderVSync(renderer, &vsync)
+	info.vsync = vsync
+	mode := sdl.GetCurrentDisplayMode(sdl.GetDisplayForWindow(window))
+	if mode != nil {
+		info.display_refresh_hz = mode.refresh_rate
+	}
+	return
+}
+
+ticks_to_ms :: proc(ticks: u64) -> f64 {
+	return f64(ticks) / platform.clock_freq * 1000.0
+}
+
+print_run_report :: proc(stats: ^Run_Stats) {
+	info := &stats.info
+	fmt.println("\nSqueeze run report")
+	fmt.println(
+		"──────────────────────────────────────────────────────────────────────",
+	)
+
+	// Run
+	fmt.println("Run")
+	commit := strings.trim(BUILD_COMMIT, "\"")
+	deps_config := strings.trim(BUILD_DEPS_CONFIG, "\"")
+	odin_config := "debug" if ODIN_DEBUG else "release"
+	optimization := strings.to_lower(fmt.tprintf("%v", ODIN_OPTIMIZATION_MODE), context.temp_allocator)
+	fmt.printf("  %-14s %s\n", "Commit", commit)
+	fmt.printf(
+		"  %-14s Odin %s (%s, -o:%v), C/deps %s\n",
+		"Build",
+		odin_config,
+		ODIN_VERSION_HASH,
+		optimization,
+		deps_config,
+	)
+	if ODIN_DEBUG || deps_config != "release" {
+		fmt.printf("  %-14s %s\n", "", "Debug code present: timings are not a performance baseline")
+	}
+	fmt.printf("  %-14s Odin %s, SDL %s", "Toolchain", ODIN_VERSION, format_sdl_version(info.sdl_version))
+	if info.sdl_revision != "" {
+		fmt.printf(" (%s)", info.sdl_revision)
+	}
+	fmt.println()
+	fmt.printf("  %-14s %s\n", "Decoder", string(info.backend_text[:info.backend_length]))
+	workload := info.workload if info.workload != "" else "none loaded"
+	fmt.printf("  %-14s %s\n", "Workload", workload)
+	renderer := info.renderer_name if info.renderer_name != "" else "not measured"
+	fmt.printf("  %-14s %s, vsync %s\n", "Renderer", renderer, format_vsync(info^))
+	if info.display_refresh_hz > 0 {
+		period_ms := 1000.0 / f64(info.display_refresh_hz)
+		fmt.printf(
+			"  %-14s %.2f Hz (%s period)\n",
+			"Display",
+			info.display_refresh_hz,
+			strings.trim_space(format_duration_ms(period_ms)),
+		)
+	} else {
+		fmt.printf("  %-14s %s\n", "Display", "refresh rate not measured")
+	}
+	loop_ms: f64
+	if stats.loop_ended_at > stats.loop_started_at {
+		loop_ms = ticks_to_ms(stats.loop_ended_at - stats.loop_started_at)
+	}
+	fmt.printf(
+		"  %-14s %s loop, %d frames presented, %d paused\n",
+		"Session",
+		strings.trim_space(format_duration_ms(loop_ms)),
+		stats.frames.present.count,
+		stats.paused_frames,
+	)
+
+	fmt.println("\nStartup")
+	print_lifecycle_phase(stats, .Startup)
+
+	// Frames, in the order each stage runs within a frame; the whole frame last.
+	frames := &stats.frames
+	fmt.println("\nFrames (whole session; wall-clock, includes waiting inside calls)")
+	fmt.printf("  %-16s %8s %11s %11s %11s %9s\n", "stage", "count", "total", "mean", "worst", "at frame")
+	print_stage_row("input", frames.input)
+	print_stage_row("app_update", frames.app_update)
+	print_stage_row("texture_upload", frames.texture_upload)
+	print_stage_row("render_commands", frames.render_commands)
+	print_stage_row("present", frames.present)
+	// Frame mean minus stage means: loop bookkeeping between timed stages. Mean-based
+	// because the frame interval has one fewer sample than the stages.
+	if frames.frame_interval.count > 0 {
+		stages_mean_ms := stage_mean_ms(frames.input) + stage_mean_ms(frames.app_update)
+		stages_mean_ms += stage_mean_ms(frames.texture_upload) + stage_mean_ms(frames.render_commands)
+		stages_mean_ms += stage_mean_ms(frames.present)
+		untimed_ms := max(stage_mean_ms(frames.frame_interval) - stages_mean_ms, 0)
+		fmt.printf("  %-16s %8s  %10s  %s\n", "untimed", "", "", format_duration_ms(untimed_ms))
+	}
+	fmt.printf(
+		"  %s\n",
+		"───────────────────────────────────────────────────────────────────────",
+	)
+	print_stage_row("frame (total)", frames.frame_interval)
+	if loop_ms > 0 && stats.frames.present.count > 0 {
+		present_share := ticks_to_ms(stats.frames.present.total_ticks) / loop_ms * 100.0
+		fmt.printf("  Inside present: %.0f%% of loop time (includes waiting)\n", present_share)
+	}
+	fmt.printf("  Timer resolution: %s\n", strings.trim_space(format_duration_ms(1000.0 / platform.clock_freq)))
+
+	fmt.println("\nShutdown")
+	print_lifecycle_phase(stats, .Shutdown)
+
+	// Memory
+	fmt.println("\nMemory")
+	fmt.printf("  %-14s %16s %14s %15s\n", "arena", "reserved start", "reserved end", "growth events")
+	print_arena_row("permanent", stats.permanent_arena)
+	print_arena_row("scratch", stats.scratch_arena)
+	fmt.printf("  %-32s %s\n", "Arena used / high-water", "not measured")
+	fmt.printf("  %-32s %s\n", "Process footprint", "not measured (use Instruments)")
+	fmt.printf("  %-32s %s\n", "GPU memory", "not measured")
+
+	fmt.println("\nNot measured: CPU time (all timings are wall-clock), GPU execution time")
+
+	if os.get_env("SQUEEZE_RAW_STATS", context.temp_allocator) == "1" {
+		fmt.println("\nRaw stats (SQUEEZE_RAW_STATS=1; ticks are SDL performance-counter units)")
+		fmt.printf("clock_freq = %v\n", platform.clock_freq)
+		fmt.printf("lifecycle = %#v\n", stats.lifecycle)
+		fmt.printf("frames = %#v\n", stats.frames)
+		fmt.printf("permanent_arena = %#v\n", stats.permanent_arena)
+		fmt.printf("scratch_arena = %#v\n", stats.scratch_arena)
+	}
+	return
+}
+
+print_lifecycle_phase :: proc(stats: ^Run_Stats, phase: Lifecycle_Phase) {
+	for step in Lifecycle_Step {
+		if lifecycle_phases[step] != phase {
+			continue
+		}
+		timing := stats.lifecycle[step]
+		parent, is_nested := lifecycle_parents[step].?
+		indent := "    " if is_nested else "  "
+		label := fmt.tprintf("%s%s", indent, lifecycle_names[step])
+		if !timing.executed {
+			fmt.printf("%-28s %s\n", label, "not executed")
+			continue
+		}
+		duration := format_duration_ms(ticks_to_ms(timing.ticks))
+		if is_nested {
+			parent_name := strings.to_lower(lifecycle_names[parent], context.temp_allocator)
+			fmt.printf("%-28s %s  included in %s\n", label, duration, parent_name)
+		} else {
+			fmt.printf("%-28s %s\n", label, duration)
+		}
+	}
+	return
+}
+
+stage_mean_ms :: proc(stage: Stage_Stats) -> f64 {
+	if stage.count == 0 {
+		return 0
+	}
+	return ticks_to_ms(stage.total_ticks) / f64(stage.count)
+}
+
+print_stage_row :: proc(name: string, stage: Stage_Stats) {
+	if stage.count == 0 {
+		fmt.printf("  %-16s %s\n", name, "not executed")
+		return
+	}
+	total_ms := ticks_to_ms(stage.total_ticks)
+	mean_ms := total_ms / f64(stage.count)
+	worst_ms := ticks_to_ms(stage.max_ticks)
+	// Pad formatted strings, not numbers: this Odin's fmt zero-pads right-aligned numbers.
+	// Durations are already fixed-width; %s width counts bytes, which misaligns "µ".
+	count := fmt.tprintf("%d", stage.count)
+	worst_frame := fmt.tprintf("%d", stage.worst_frame)
+	fmt.printf(
+		"  %-16s %8s  %s  %s  %s %9s\n",
+		name,
+		count,
+		format_duration_ms(total_ms),
+		format_duration_ms(mean_ms),
+		format_duration_ms(worst_ms),
+		worst_frame,
+	)
+	return
+}
+
+print_arena_row :: proc(name: string, arena: Arena_Stats) {
+	growth := fmt.tprintf("%d", arena.growth_events)
+	fmt.printf(
+		"  %-14s %16s %14s %15s\n",
+		name,
+		format_bytes(arena.initial_reserved),
+		format_bytes(arena.reserved),
+		growth,
+	)
+	return
+}
+
+format_sdl_version :: proc(version: i32) -> string {
+	if version == 0 {
+		return "not measured"
+	}
+	return fmt.tprintf(
+		"%d.%d.%d",
+		sdl.VERSIONNUM_MAJOR(version),
+		sdl.VERSIONNUM_MINOR(version),
+		sdl.VERSIONNUM_MICRO(version),
+	)
+}
+
+// SDL_GetRenderVSync: 0 off, 1 every refresh, N every Nth refresh, -1 adaptive.
+format_vsync :: proc(info: Run_Info) -> string {
+	if !info.vsync_known {
+		return "not measured"
+	}
+	switch info.vsync {
+	case 0:
+		return "off"
+	case 1:
+		return "on"
+	case -1:
+		return "adaptive"
+	}
+	return fmt.tprintf("every %d refreshes", info.vsync)
+}
+
+// Largest unit whose value is at least 1, always two decimals so decimal points align.
+// Fixed width: 10 characters (7-wide number, space, 2-character unit).
+format_duration_ms :: proc(ms: f64) -> string {
+	value := ms
+	unit := "ms"
+	if ms >= 1000.0 {
+		value = ms / 1000.0
+		unit = "s "
+	} else if ms < 0.001 {
+		value = ms * 1_000_000.0
+		unit = "ns"
+	} else if ms < 1.0 {
+		value = ms * 1000.0
+		unit = "µs"
+	}
+	number := fmt.tprintf("%.2f", value)
+	return fmt.tprintf("%7s %s", number, unit)
+}
