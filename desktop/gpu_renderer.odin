@@ -1,6 +1,5 @@
 package main
 
-import "core:bytes"
 import "core:c"
 import "core:fmt"
 import "core:image"
@@ -331,7 +330,7 @@ load_texture_from_memory :: proc(buf: []byte, image_type: Image_Type = .PNG) -> 
 	}
 
 	log.info("Loading texture from memory buffer")
-	return load_texture_from_pixels(u32(img.width), u32(img.height), bytes.buffer_to_bytes(&img.pixels))
+	return load_texture_from_pixels(u32(img.width), u32(img.height), img.pixels[:])
 }
 
 load_texture_from_pixels :: proc(tex_width, tex_height: u32, pixels_buf: []byte) -> Texture {

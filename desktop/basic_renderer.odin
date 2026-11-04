@@ -22,6 +22,8 @@ basic_renderer_init :: proc() {
 		&basic_renderer.window,
 		&basic_renderer.renderer,
 	)
+	// macOS can launch the window behind the terminal; bring it to the front.
+	sdl.RaiseWindow(basic_renderer.window)
 
 	log.infof("created window and basic renderer")
 	log.infof("\tusing renderer backend: %s", sdl.GetRendererName(basic_renderer.renderer))
