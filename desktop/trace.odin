@@ -1,6 +1,7 @@
 package main
 
 import "core:c"
+import "core:log"
 import "core:mem"
 import tracy "ext:odin-tracy"
 
@@ -129,9 +130,10 @@ Tracked_Arena :: struct {
 	pool:    cstring,
 }
 
-// Without Tracy, returns the backing allocator unchanged: no wrapper, no cost.
+// Installed in Debug builds (free guard) and Tracy builds (Memory view). Otherwise
+// returns the backing allocator unchanged: no wrapper, no cost.
 tracked_arena_allocator :: proc(tracked: ^Tracked_Arena, backing: mem.Allocator, pool: cstring) -> mem.Allocator {
-	when !tracy.TRACY_ENABLE {
+	when !ODIN_DEBUG && !tracy.TRACY_ENABLE {
 		return backing
 	}
 	tracked^ = {
@@ -153,6 +155,16 @@ tracked_arena_allocator_proc :: proc(
 	mem.Allocator_Error,
 ) {
 	tracked := (^Tracked_Arena)(allocator_data)
+	// Arenas cannot free individually, so any free is a bug: that memory stays live
+	// until free_all. Loud on purpose; becomes an assert once runs are clean.
+	if mode == .Free && old_memory != nil {
+		log.errorf(
+			"free() on arena '%s' (%p): arenas only free_all; use free_all or a dedicated allocator",
+			tracked.pool,
+			old_memory,
+			location = location,
+		)
+	}
 	data, err := tracked.backing.procedure(tracked.backing.data, mode, size, alignment, old_memory, old_size, location)
 	if err != nil {
 		return data, err
@@ -171,7 +183,7 @@ tracked_arena_allocator_proc :: proc(
 			tracy.AllocN(raw_data(data), c.size_t(size), tracked.pool, ALLOC_CALLSTACK)
 		}
 	case .Free:
-		// Arenas reject individual frees, so err above already returned for them.
+		// Unreachable for arenas: they reject frees, so err above already returned.
 		tracy.FreeN(old_memory, tracked.pool, ALLOC_CALLSTACK)
 	case .Free_All:
 		tracy.MemoryDiscard(tracked.pool)

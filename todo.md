@@ -102,7 +102,8 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [x] Odin arenas tracked: `tracked_arena_allocator` (desktop/trace.odin), named pools `permanent`/`scratch`, `free_all` → pool discard, moved resizes keep the old block live, allocation callstacks (`tracy_alloc_callstack`, default 16); identity when Tracy is off. Verified headlessly (alloc, in-place/moved resize, rejected free, free_all)
 - [x] Verified in Tracy's Memory view: `permanent`/`scratch` pools, 3.5 MB frame buffer, scratch emptying each frame; C (SDL) frames symbolicate
 - [ ] **Odin frames missing from callstacks**: Odin omits frame pointers on macOS arm64 (no `"frame-pointer"` IR attribute; `x29` never set), and Tracy's macOS client walks frame pointers via `backtrace()`. Unwind tables are fine (libunwind walks Odin frames). Still present in `dev-2026-10-nightly:84bc3fc`. Draft issue + repro: `docs/upstream/odin-frame-pointers/`
-- [ ] Loud arena free guard: install the arena wrapper in all Debug builds (not only Tracy), log an error with the call site on every `free`; fix our own hits (e.g. `log.destroy_console_logger` at shutdown); switch to an assert once runs are clean
+- [x] Loud arena free guard: wrapper installed in Debug or Tracy builds; every non-nil `free` logs an error at the caller's location. Fixed our hit: removed `log.destroy_console_logger` at shutdown (logger lives in the permanent arena). Verified headlessly
+- [ ] Switch the free guard to an assert once real runs are clean
 - [x] Callstack depths enforced 0..62 at compile time (Odin `#assert`s, C `#error` in `vd_trace.h`)
 - [ ] SDL allocations: `SDL_SetMemoryFunctions`
 - [ ] FFmpeg allocations: configure `--malloc-prefix` hooks implemented in VD (option confirmed in vendored configure)
@@ -158,8 +159,8 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 - [ ] Re-check idle CPU after the change: Activity Monitor shows ~30% of one core for a static image (all threads; main thread works ~15%). Investigate (Tracy off vs on, Time Profiler by thread) only if it does not drop substantially
 
 ## Next Session
-1. **Odin frame pointers:** re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
-2. Loud arena free guard (all Debug builds), fix our own hits.
+1. **Odin frame pointers (waiting on upstream):** still reproduces on `dev-2026-11-nightly:9a69916`; raised on the Odin Discord 2026-11-04. Decide the stopgap once they answer. Previously: re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
+2. Free guard done; run the app a few times, then make it an assert.
 3. SDL allocations (`SDL_SetMemoryFunctions`), then FFmpeg (`--malloc-prefix`).
 4. Then: event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
 

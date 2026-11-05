@@ -40,8 +40,9 @@ main :: proc() {
 		lifecycle_record(.Platform_Teardown, platform_close_started_at, platform_close_ended_at)
 		print_run_report(&platform.stats)
 
-		// meh, wont get counted, fix later
-		log.destroy_console_logger(context.logger)
+		// No log.destroy_console_logger: the logger lives in the permanent
+		// arena, which cannot free it individually; process exit releases the
+		// arena.
 	}
 	vd_hello()
 
