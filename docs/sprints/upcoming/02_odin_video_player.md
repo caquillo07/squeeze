@@ -31,6 +31,7 @@ The C++ video_editor (at /Users/hector/code/video_editor) is a video player buil
 ## Phases
 
 ### Phase 1 — C Shim: Full FFmpeg Interface
+- [ ] Open API takes a backend-neutral byte source from the start (see `03_sources_and_sinks.md`)
 - [ ] Expand vd.c/vd.h to expose: format open/close, stream info, codec open/close
 - [ ] Expose packet read (av_read_frame), packet alloc/free/unref
 - [ ] Expose decode send/receive (avcodec_send_packet, avcodec_receive_frame)
