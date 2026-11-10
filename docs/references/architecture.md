@@ -12,7 +12,6 @@ Linux support is planned but not implemented or verified.
 ```text
 squeeze/
 ├── core/
-│   ├── squeeze.odin        portable exported proof-of-life functions
 │   └── vd/
 │       ├── vd.h            backend-neutral public C API
 │       ├── vd.c            unity compilation entry point
