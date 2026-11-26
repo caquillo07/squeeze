@@ -21,6 +21,7 @@ set(FFMPEG_PREFIX "${CMAKE_SOURCE_DIR}/build/deps/ffmpeg/${vd_config}/install" C
 # single client, so it is never merged into the archive. Presets set the default.
 option(VD_TRACY "Compile VD's Tracy zones" OFF)
 set(VD_TRACY_CALLSTACK "0" CACHE STRING "Stack frames captured per VD Tracy zone")
+set(VD_TRACY_ALLOC_CALLSTACK "16" CACHE STRING "Stack frames captured per VD Tracy allocation")
 set(TRACY_LIBRARY "${CMAKE_SOURCE_DIR}/build/deps/tracy/${vd_config}/on/libtracy.a" CACHE FILEPATH "Prebuilt Tracy client, linked into VD tests only")
 
 if (NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
@@ -44,15 +45,17 @@ add_compile_options(
 # vd.c includes the selected backend: one compiler process, one object.
 add_library(vd_unity OBJECT core/vd/vd.c)
 # Visible to the IDE, but still compiled only through vd.c.
-set_source_files_properties(core/vd/vd_ffmpeg.c core/vd/vd_stub.c PROPERTIES HEADER_FILE_ONLY ON)
-target_sources(vd_unity PRIVATE core/vd/vd.h core/vd/vd_trace.h core/vd/vd_ffmpeg.c core/vd/vd_stub.c)
+set_source_files_properties(core/vd/vd_ffmpeg.c core/vd/vd_ffmpeg_memory.c core/vd/vd_stub.c PROPERTIES HEADER_FILE_ONLY ON)
+target_sources(vd_unity PRIVATE core/vd/vd.h core/vd/vd_trace.h core/vd/vd_ffmpeg.c core/vd/vd_ffmpeg_memory.c
+	core/vd/vd_stub.c)
 # Always on the include path: TracyC.h compiles its macros to nothing without TRACY_ENABLE.
 target_include_directories(vd_unity SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/ext/tracy/public")
 if (VD_TRACY)
 	if (NOT EXISTS "${TRACY_LIBRARY}")
 		message(FATAL_ERROR "Missing ${TRACY_LIBRARY}. Run just vd_config=${vd_config} build-tracy first.")
 	endif ()
-	target_compile_definitions(vd_unity PRIVATE TRACY_ENABLE "TRACY_CALLSTACK=${VD_TRACY_CALLSTACK}")
+	target_compile_definitions(vd_unity PRIVATE TRACY_ENABLE "TRACY_CALLSTACK=${VD_TRACY_CALLSTACK}"
+		"VD_TRACY_ALLOC_CALLSTACK=${VD_TRACY_ALLOC_CALLSTACK}")
 endif ()
 message(STATUS "VD Tracy zones: ${VD_TRACY}")
 

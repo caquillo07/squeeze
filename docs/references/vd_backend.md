@@ -26,6 +26,11 @@ versions, queried at runtime, into caller-owned storage (snprintf semantics). Th
 desktop run report prints it; the public smoke test checks it names the configured
 backend, so a stale archive for the other backend fails.
 
+`vd_heap_stats_get(&stats)` reports whole-run backend heap counters (allocations,
+frees, live, peak live, total; allocator usable sizes). The FFmpeg backend counts
+through its `--malloc-prefix` hooks; the stub returns false. Desktop's `Heap_Stats`
+mirrors the struct (layout asserted on both sides).
+
 ## Compile-Time Selection
 
 Layout:
@@ -35,6 +40,7 @@ core/vd/
     vd.h              backend-neutral public API
     vd.c              backend selection; only compilation entry point
     vd_ffmpeg.c       private FFmpeg implementation
+    vd_ffmpeg_memory.c  FFmpeg allocator hooks (--malloc-prefix=vd_), heap counters
     vd_stub.c         backend-unavailable implementation
     tests/            public and backend-private smoke tests
 ```
@@ -43,6 +49,7 @@ core/vd/
 #if defined(VD_BACKEND_FFMPEG) && defined(VD_BACKEND_STUB)
 #error "Select exactly one VD backend"
 #elif defined(VD_BACKEND_FFMPEG)
+#include "vd_ffmpeg_memory.c"
 #include "vd_ffmpeg.c"
 #elif defined(VD_BACKEND_STUB)
 #include "vd_stub.c"

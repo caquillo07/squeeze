@@ -39,6 +39,15 @@ flags=(
     --enable-swscale --enable-swresample
     --enable-demuxer=mov --enable-decoder=h264 --enable-parser=h264
     --enable-protocol=file
+    # Route libavutil's allocator through VD's counting/Tracy hooks (core/vd/vd_ffmpeg_memory.c).
+    # configure detects posix_memalign by linking against vd_posix_memalign, which only
+    # exists in libvd.a; allow it undefined in that probe so aligned allocation (required
+    # with asm) is detected. Static libraries only: every final link includes libvd.a.
+    --malloc-prefix=vd_
+    # macOS ld64 only. Linux (GNU ld/lld) equivalent, scoped to this one symbol:
+    #   --extra-ldflags=-Wl,--defsym=vd_posix_memalign=posix_memalign
+    # Never --unresolved-symbols=ignore-all: every other configure probe would pass.
+    --extra-ldflags=-Wl,-U,_vd_posix_memalign
 )
 if [[ "$config" == debug ]]; then
     flags+=(--enable-debug=3 --disable-optimizations --optflags=-O0

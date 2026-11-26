@@ -17,5 +17,17 @@
 #error "TRACY_CALLSTACK must be 0..62 (Tracy's portable limit)"
 #endif
 
+#ifndef VD_TRACY_ALLOC_CALLSTACK
+#define VD_TRACY_ALLOC_CALLSTACK 0
+#endif
+#if VD_TRACY_ALLOC_CALLSTACK < 0 || VD_TRACY_ALLOC_CALLSTACK > 62
+#error "VD_TRACY_ALLOC_CALLSTACK must be 0..62 (Tracy's portable limit)"
+#endif
+
 #define trace_begin(zone, name) TracyCZoneN(zone, name, 1)
 #define trace_end(zone) TracyCZoneEnd(zone)
+
+// Allocation events for Tracy's Memory view, in a named pool (use a string literal:
+// Tracy identifies pools by pointer). Depth matches the app's tracy_alloc_callstack.
+#define trace_alloc(ptr, size, pool) TracyCAllocNS(ptr, size, VD_TRACY_ALLOC_CALLSTACK, pool)
+#define trace_free(ptr, pool) TracyCFreeNS(ptr, VD_TRACY_ALLOC_CALLSTACK, pool)

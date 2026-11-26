@@ -4,6 +4,10 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/cpu.h>
+#include <libavutil/mem.h>
+#include <stdint.h>
+#include "vd.h"
 #include <libavutil/frame.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
@@ -76,6 +80,34 @@ int main(void) {
 		assert(count == 1);
 		assert(samples[0] == 0.5f);
 		swr_free(&resample);
+	}
+
+	// Allocator hooks: av_malloc goes through VD (--malloc-prefix=vd_), keeps FFmpeg's
+	// SIMD alignment, and is counted.
+	{
+		vd_heap_stats before = {0};
+		vd_heap_stats after = {0};
+		assert(vd_heap_stats_get(&before));
+		assert(before.allocations > 0); // the codec/format work above allocated
+		size_t align = av_cpu_max_align();
+		void *blocks[8] = {0};
+		for (int i = 0; i < 8; i += 1) {
+			blocks[i] = av_malloc((size_t)(1 + i * 1000));
+			assert(blocks[i] != NULL);
+			assert(((uintptr_t)blocks[i] % align) == 0);
+		}
+		blocks[0] = av_realloc(blocks[0], 100000);
+		assert(blocks[0] != NULL);
+		assert(vd_heap_stats_get(&after));
+		assert(after.allocations == before.allocations + 9);
+		assert(after.frees == before.frees + 1);
+		assert(after.peak_live_bytes >= after.live_bytes);
+		for (int i = 0; i < 8; i += 1) {
+			av_free(blocks[i]);
+		}
+		assert(vd_heap_stats_get(&after));
+		assert(after.live_bytes == before.live_bytes);
+		printf("[VD] FFmpeg heap: alignment %zu, counted through vd_* hooks\n", align);
 	}
 
 	puts("[VD] all five libraries: allocation/codec/scaling/resampling smoke passed");

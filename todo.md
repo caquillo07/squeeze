@@ -105,8 +105,11 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [x] Loud arena free guard: wrapper installed in Debug or Tracy builds; every non-nil `free` logs an error at the caller's location. Fixed our hit: removed `log.destroy_console_logger` at shutdown (logger lives in the permanent arena). Verified headlessly
 - [ ] Switch the free guard to an assert once real runs are clean
 - [x] Callstack depths enforced 0..62 at compile time (Odin `#assert`s, C `#error` in `vd_trace.h`)
-- [ ] SDL allocations: `SDL_SetMemoryFunctions`
-- [ ] FFmpeg allocations: configure `--malloc-prefix` hooks implemented in VD (option confirmed in vendored configure)
+- [x] SDL allocations: hooks via `SDL_SetMemoryFunctions` in `trace_init` (first in main), pool `sdl`, report-only over SDL's original allocator, Tracy builds only. Install verified by reading functions back (pinned binding drops the bool result). Verified headlessly
+- [x] `sdl` pool verified: all SDL allocations freed by exit
+- [x] Heap section in the run report: SDL and FFmpeg peak live, live at exit, allocations, frees, total (usable sizes, counted in all builds via the hooks)
+- [x] FFmpeg allocations: `--malloc-prefix=vd_`; `vd_posix_memalign/realloc/free` in `vd_ffmpeg_memory.c` count (`vd_heap_stats_get`) and report pool `ffmpeg` to Tracy with `VD_TRACY_ALLOC_CALLSTACK` stacks. configure's posix_memalign probe needs `-Wl,-U,_vd_posix_memalign` (else it refuses asm). No FFmpeg library calls libc allocators directly. Smoke test checks alignment (`av_cpu_max_align`) and counts. Debug/Release, Tracy on/off, stub all pass
+- [x] Verified on a real run: report heap rows (sdl 11858/11858, ffmpeg 8/8 from a temporary packet+frame test, since removed) and the `ffmpeg` pool in Tracy with full FFmpeg→VD stacks plus the first Odin frame. Allocator hooks split into `vd_ffmpeg_memory.c`; `vd.h` made valid C11+/C++
 - [x] macOS limits: Tracy shows only threads that emit zones (no sampling/context switches on macOS); SDL/Metal/system threads → Instruments. Our future threads: name + zones
 - [ ] Metal GPU zones: when the GPU renderer is active
 - [ ] Extend zones across the media pipeline and threads as they appear
@@ -129,6 +132,20 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [ ] Capture and explain a representative baseline
 
 ---
+
+## Linux Port — Things Left Behind
+Everything currently macOS arm64-specific, so it is not lost when Linux lands:
+- Build guards: `scripts/build_{ffmpeg,sdl,tracy}.sh` (`uname -sm`), `CMakeLists.txt` and `scripts/sdl/CMakeLists.txt` (`APPLE`/arm64), `#assert`s in `ext/odin-sdl3/sdl3__foreign.odin` and `ext/odin-tracy/bindings.odin`
+- Archive merging: `libtool -static` (VD `CMakeLists.txt`, `scripts/sdl/CMakeLists.txt`, `build_tracy.sh`) → `ar` MRI script or `ar -M` on Linux
+- Presets/flags: `CMAKE_OSX_ARCHITECTURES`/`CMAKE_OSX_SYSROOT`, `-arch arm64`, FFmpeg `--target-os=darwin --arch=aarch64`, `/usr/bin/clang`, `~/.local/bin/make`
+- FFmpeg allocator probe: `-Wl,-U,_vd_posix_memalign` is ld64-only; Linux uses `-Wl,--defsym=vd_posix_memalign=posix_memalign` (noted in `build_ffmpeg.sh`). Verify configure still reports `HAVE_POSIX_MEMALIGN 1` and no direct libc allocator use (`nm`)
+- Heap block size: `malloc_size` (macOS) vs `malloc_usable_size` (glibc) already split in `vd_ffmpeg_memory.c` and `desktop/trace.odin`, but the Linux branch is untested
+- SDL link flags: extracted from `sdl3.pc` (frameworks on macOS); re-check the Linux output (X11/Wayland/ALSA/PulseAudio etc. are dlopen'd vs linked) and `SDL_DEPS_SHARED`
+- SDL options disabled for macOS (OpenGL/GLES/Vulkan off): Linux will need Vulkan (and maybe GL) for the renderer
+- Tracy: Linux supports sampling and context switches (needs privileges: perf_event_paranoid / root); viewer from release binaries; re-check `TRACY_ONLY_LOCALHOST`
+- Frame pointers: re-check Odin's frame-pointer emission on Linux (same missing attribute likely); Tracy on Linux uses libbacktrace/DWARF
+- Profilers: perf/Hotspot, heaptrack instead of Instruments (Phase 3); report's "use Instruments" text
+- Odin/CLion: debugger setup docs are LLDB/macOS-specific (`docs/references/desktop_debugging.md`)
 
 ## Deferred
 - Pipeline, queue, audio, A/V-drift, and dropped-frame metrics: when those systems exist
@@ -161,8 +178,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 ## Next Session
 1. **Odin frame pointers (waiting on upstream):** still reproduces on `dev-2026-11-nightly:9a69916`; raised on the Odin Discord 2026-11-04. Decide the stopgap once they answer. Previously: re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
 2. Free guard done; run the app a few times, then make it an assert.
-3. SDL allocations (`SDL_SetMemoryFunctions`), then FFmpeg (`--malloc-prefix`).
-4. Then: event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
+3. Event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
 
 ## First Findings (Debug build, dummy workload)
 - ~82% of session time is inside `SDL_RenderPresent` — waiting, not work. We redraw a static image ~129×/s; battery fix later: skip presenting when nothing changed.

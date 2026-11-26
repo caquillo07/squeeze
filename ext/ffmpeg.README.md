@@ -43,6 +43,13 @@ and the five libraries (`avformat`, `avcodec`, `avutil`, `swscale`, `swresample`
 No encoders, network protocols, external libraries, or hardware accelerators.
 Add codecs/formats explicitly in `scripts/build_ffmpeg.sh` when needed.
 
+Allocator: configured with `--malloc-prefix=vd_`, so `libavutil/mem.c` calls
+`vd_posix_memalign`, `vd_realloc`, and `vd_free`, implemented in `core/vd/vd_ffmpeg_memory.c`
+(heap counters for the run report, Tracy pool `ffmpeg`). `-Wl,-U,_vd_posix_memalign`
+lets configure's link probe succeed so aligned allocation is detected; without it,
+configure refuses to build with assembly. Only static libraries are built, and every
+final link includes `libvd.a`. No other FFmpeg code calls libc allocators directly.
+
 The VD smoke test references all five library versions through the public API.
 The backend-private smoke test opens an H.264 decoder without feeding media,
 allocates/frees format and frame resources, and verifies tiny pixel and audio

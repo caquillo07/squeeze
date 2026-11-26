@@ -16,5 +16,4 @@ main :: proc() {
 		tracy.FrameMark()
 	}
 	fmt.printf("Odin → local Tracy client: zones/frames/plots OK (viewer connected: %v)\n", tracy.IsConnected())
-	return
 }

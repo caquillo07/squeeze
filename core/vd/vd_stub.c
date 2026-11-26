@@ -15,6 +15,11 @@ size_t vd_backend_describe(char *buffer, size_t capacity) {
 	return (size_t)length;
 }
 
+bool vd_heap_stats_get(vd_heap_stats *out) {
+	*out = (vd_heap_stats){0};
+	return false;
+}
+
 void vd_hello(void) {
 	trace_begin(zone, "vd_hello");
 	printf("[VD] backend unavailable (stub build)\n");

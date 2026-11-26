@@ -28,6 +28,9 @@ by the code doing the work or queried from linked libraries.
   temp scope ends): peak used (+frame), peak committed, reserved, peak reserved, growth
   and release counts. Growth with zero releases means undersized; growth and releases
   rising together means an overflow block is cycling. Growth logs a warning every time.
+- **Heaps:** SDL and FFmpeg, whole run, counted by allocator hooks in every build:
+  peak live, live at exit (read after `SDL_Quit`), allocations, frees, total.
+  Sizes are allocator usable sizes.
 
 `SQUEEZE_RAW_STATS=1` appends the raw tick values. "not measured" means we have no
 instrumentation for it; "not executed" means it ran zero times.
@@ -45,6 +48,8 @@ instrumentation for it; "not executed" means it ran zero times.
   allocation callstacks (default depth 16, `just tracy_alloc_callstack=N`); `free_all`
   discards the pool. Identity when Tracy is off. In `on` mode, allocations made before
   the viewer connects are unknown to it; use `tracy=startup` to see startup memory.
+- SDL's allocations: pool `sdl` via `SDL_SetMemoryFunctions` hooks installed by
+  `trace_init`, which must stay the first call in `main`.
 - C (VD): `core/vd/vd_trace.h` `trace_begin(zone, "name")` / `trace_end(zone)`; same
   timeline, single client. Stages stay app-only.
 

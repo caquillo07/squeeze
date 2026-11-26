@@ -17,5 +17,4 @@ main :: proc() {
 	assert(surface.format == .RGBA32 && surface.pitch >= 8, "SDL pixel layout mismatch")
 	assert(surface.pixels != nil, "SDL surface has no pixel storage")
 	fmt.printf("Odin → local SDL %d: clock and surface bindings OK\n", sdl.GetVersion())
-	return
 }

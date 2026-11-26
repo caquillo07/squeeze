@@ -1,8 +1,11 @@
 package main
 
+import "base:intrinsics"
+import "base:runtime"
 import "core:c"
 import "core:log"
 import "core:mem"
+import sdl "ext:odin-sdl3"
 import tracy "ext:odin-tracy"
 
 // One instrumentation API for the app. A stage feeds both the shutdown report
@@ -42,12 +45,13 @@ Frame_Stages :: struct {
 	stages:         [Stage]Stage_Stats,
 }
 
-// Names the main thread and configures plots. Call once at startup on the main thread.
+// Names the main thread, configures plots, and hooks SDL's allocator. Call
+// first in main, on the main thread, before any SDL call.
 trace_init :: proc() {
+	sdl_memory_hooks_install()
 	tracy.SetThreadName("main")
 	tracy.PlotConfig("permanent_used", .Memory, true, true, 0)
 	tracy.PlotConfig("scratch_used", .Memory, true, true, 0)
-	return
 }
 
 Stage_Scope :: struct {
@@ -83,7 +87,6 @@ stage_end :: proc(scope: Stage_Scope) {
 	tracy.ZoneEnd(scope.zone)
 	stats := &platform.stats
 	stage_record(&stats.frames.stages[scope.stage], scope.started_at, time_now(), stats.frame_index)
-	return
 }
 
 // Scoped form: ends when the enclosing scope exits.
@@ -99,7 +102,6 @@ trace_begin :: proc(name: string, loc := #caller_location) -> tracy.ZoneCtx {
 
 trace_end :: proc(zone: tracy.ZoneCtx) {
 	tracy.ZoneEnd(zone)
-	return
 }
 
 @(deferred_out = trace_end)
@@ -109,7 +111,6 @@ trace_scope :: proc(name: string, loc := #caller_location) -> tracy.ZoneCtx {
 
 trace_plot_bytes :: proc(name: cstring, bytes: uint) {
 	tracy.PlotI(name, i64(bytes))
-	return
 }
 
 // Stack frames captured per tracked allocation; separate from zones (TRACY_CALLSTACK)
@@ -190,4 +191,147 @@ tracked_arena_allocator_proc :: proc(
 	case .Query_Features, .Query_Info:
 	}
 	return data, err
+}
+
+// SDL heap: hooks via SDL_SetMemoryFunctions count every SDL allocation for the run
+// report (always) and report them to Tracy's Memory view as pool "sdl" (Tracy builds).
+// Memory stays in SDL's own allocator; the hooks forward and observe.
+// Must run before SDL allocates anything, or a block could be freed through the wrong
+// allocator. SDL_GetNumAllocations cannot check this: SDL builds without
+// SDL_TRACK_ALLOCATION_COUNT (returns -1), so trace_init must stay first in main.
+// Does not see memory Metal/AppKit/CoreAudio allocate internally.
+SDL_POOL :: cstring("sdl")
+
+SDL_Memory_Functions :: struct {
+	malloc:  sdl.malloc_func,
+	calloc:  sdl.calloc_func,
+	realloc: sdl.realloc_func,
+	free:    sdl.free_func,
+}
+
+// Written once before SDL starts any thread; read-only afterwards.
+sdl_original_memory: SDL_Memory_Functions
+// Updated atomically from any SDL thread.
+sdl_heap: Heap_Stats
+
+// Usable size of a system-allocator block (>= requested); free() receives no size.
+when ODIN_OS == .Darwin {
+	foreign import libsystem "system:System"
+	@(default_calling_convention = "c")
+	foreign libsystem {
+		@(link_name = "malloc_size")
+		block_size :: proc(block: rawptr) -> c.size_t ---
+	}
+} else when ODIN_OS == .Linux {
+	foreign import libc_system "system:c"
+	@(default_calling_convention = "c")
+	foreign libc_system {
+		@(link_name = "malloc_usable_size")
+		block_size :: proc(block: rawptr) -> c.size_t ---
+	}
+} else {
+	#panic("block_size: unsupported platform")
+}
+
+sdl_memory_hooks_install :: proc() {
+	o := &sdl_original_memory
+	sdl.GetOriginalMemoryFunctions(&o.malloc, &o.calloc, &o.realloc, &o.free)
+	// The pinned binding drops SDL_SetMemoryFunctions' bool result (ABI-safe), so
+	// confirm by reading the active functions back.
+	sdl.SetMemoryFunctions(sdl_traced_malloc, sdl_traced_calloc, sdl_traced_realloc, sdl_traced_free)
+	active: SDL_Memory_Functions
+	sdl.GetMemoryFunctions(&active.malloc, &active.calloc, &active.realloc, &active.free)
+	if active.malloc != sdl_traced_malloc || active.free != sdl_traced_free {
+		log.errorf("SDL memory hooks not installed: %s", sdl.GetError())
+	}
+}
+
+// Hooks run on any SDL thread: atomics only, read-only originals. Tracy's memory
+// calls are thread-safe. default_context only satisfies Odin's calling convention:
+// nothing here allocates or logs.
+sdl_traced_malloc :: proc "c" (size: uint) -> rawptr {
+	context = runtime.default_context()
+	result := sdl_original_memory.malloc(size)
+	if result != nil {
+		heap_stats_alloc(&sdl_heap, u64(block_size(result)))
+		tracy.AllocN(result, c.size_t(size), SDL_POOL, ALLOC_CALLSTACK)
+	}
+	return result
+}
+
+sdl_traced_calloc :: proc "c" (count: uint, size: uint) -> rawptr {
+	context = runtime.default_context()
+	result := sdl_original_memory.calloc(count, size)
+	if result != nil {
+		heap_stats_alloc(&sdl_heap, u64(block_size(result)))
+		tracy.AllocN(result, c.size_t(count * size), SDL_POOL, ALLOC_CALLSTACK)
+	}
+	return result
+}
+
+sdl_traced_realloc :: proc "c" (block: rawptr, size: uint) -> rawptr {
+	context = runtime.default_context()
+	// realloc frees the old block on success, so size it first.
+	old_size := u64(block_size(block)) if block != nil else 0
+	result := sdl_original_memory.realloc(block, size)
+	// On failure the original block is untouched and still live.
+	if result != nil {
+		if block != nil {
+			heap_stats_free(&sdl_heap, old_size)
+			tracy.FreeN(block, SDL_POOL, ALLOC_CALLSTACK)
+		}
+		heap_stats_alloc(&sdl_heap, u64(block_size(result)))
+		tracy.AllocN(result, c.size_t(size), SDL_POOL, ALLOC_CALLSTACK)
+	}
+	return result
+}
+
+sdl_traced_free :: proc "c" (block: rawptr) {
+	context = runtime.default_context()
+	if block != nil {
+		heap_stats_free(&sdl_heap, u64(block_size(block)))
+		tracy.FreeN(block, SDL_POOL, ALLOC_CALLSTACK)
+	}
+	sdl_original_memory.free(block)
+}
+
+// Whole-run counters for a foreign heap, safe to update from any thread. Byte
+// counts are allocator usable sizes (>= requested). Mirrors VD's vd_heap_stats
+// exactly (passed to vd_heap_stats_get), so keep the field order and types.
+Heap_Stats :: struct {
+	allocations:     u64,
+	frees:           u64,
+	live_bytes:      u64,
+	peak_live_bytes: u64,
+	total_bytes:     u64,
+}
+
+// Same size as C's vd_heap_stats (static_assert in vd.h).
+#assert(size_of(Heap_Stats) == 40)
+
+heap_stats_alloc :: proc "contextless" (stats: ^Heap_Stats, bytes: u64) {
+	intrinsics.atomic_add_explicit(&stats.allocations, 1, .Relaxed)
+	intrinsics.atomic_add_explicit(&stats.total_bytes, bytes, .Relaxed)
+	live := intrinsics.atomic_add_explicit(&stats.live_bytes, bytes, .Relaxed) + bytes
+	// peak = max(peak, live), safe against other threads updating it concurrently.
+	peak := intrinsics.atomic_load_explicit(&stats.peak_live_bytes, .Relaxed)
+	for live > peak {
+		// On failure, peak is reloaded with the latest value; retry only while we're larger.
+		swapped: bool
+		peak, swapped = intrinsics.atomic_compare_exchange_weak_explicit(
+			&stats.peak_live_bytes,
+			peak,
+			live,
+			.Relaxed,
+			.Relaxed,
+		)
+		if swapped {
+			break
+		}
+	}
+}
+
+heap_stats_free :: proc "contextless" (stats: ^Heap_Stats, bytes: u64) {
+	intrinsics.atomic_add_explicit(&stats.frees, 1, .Relaxed)
+	intrinsics.atomic_sub_explicit(&stats.live_bytes, bytes, .Relaxed)
 }

@@ -16,6 +16,7 @@ squeeze/
 │       ├── vd.h            backend-neutral public C API
 │       ├── vd.c            unity compilation entry point
 │       ├── vd_ffmpeg.c     private FFmpeg backend
+│       ├── vd_ffmpeg_memory.c  FFmpeg allocator hooks + heap counters
 │       ├── vd_stub.c       backend-unavailable implementation
 │       └── tests/          VD-owned smoke tests
 ├── desktop/                Odin + SDL3 application

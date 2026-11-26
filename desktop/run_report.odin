@@ -152,7 +152,6 @@ stage_record :: proc(stage: ^Stage_Stats, start, end: u64, frame: u64) {
 		stage.max_ticks = ticks
 		stage.worst_frame = frame
 	}
-	return
 }
 
 lifecycle_record :: proc(step: Lifecycle_Step, start, end: u64) {
@@ -160,7 +159,6 @@ lifecycle_record :: proc(step: Lifecycle_Step, start, end: u64) {
 		ticks    = end - start,
 		executed = true,
 	}
-	return
 }
 
 arena_stats_init :: proc(stats: ^Arena_Stats, arena: ^vmem.Arena) {
@@ -168,7 +166,6 @@ arena_stats_init :: proc(stats: ^Arena_Stats, arena: ^vmem.Arena) {
 	stats.initial_reserved = arena.total_reserved
 	stats.reserved = arena.total_reserved
 	arena_stats_sample(stats, arena, 0)
-	return
 }
 
 // Cheap: reads arena fields and walks its few blocks. Returns true when the arena
@@ -246,7 +243,6 @@ measure_instrumentation_cost :: proc() -> Instrumentation_Cost {
 run_info_capture_backend :: proc(info: ^Run_Info) {
 	length := int(vd_backend_describe(raw_data(info.backend_text[:]), len(info.backend_text)))
 	info.backend_length = min(length, len(info.backend_text) - 1)
-	return
 }
 
 // Call when the loop exits, while the window and renderer still exist.
@@ -259,7 +255,6 @@ run_info_capture_display :: proc(info: ^Run_Info, window: ^sdl.Window, renderer:
 	if mode != nil {
 		info.display_refresh_hz = mode.refresh_rate
 	}
-	return
 }
 
 ticks_to_ms :: proc(ticks: u64) -> f64 {
@@ -388,6 +383,26 @@ print_run_report :: proc(stats: ^Run_Stats) {
 	print_arena_row("permanent", stats.permanent_arena)
 	print_arena_row("scratch", stats.scratch_arena)
 	fmt.println("  Committed pages cost physical memory only once touched; reserved is address space.")
+
+	// Foreign heaps: whole run, counted by allocator hooks. Read after SDL_Quit, so
+	// "live at exit" is what SDL still held after shutting down.
+	fmt.println("\nHeaps (whole run; allocator usable sizes, >= requested)")
+	fmt.printf(
+		"  %-10s %11s %13s %12s %12s %15s\n",
+		"heap",
+		"peak live",
+		"live at exit",
+		"allocations",
+		"frees",
+		"total allocated",
+	)
+	print_heap_row("sdl", sdl_heap)
+	ffmpeg_heap: Heap_Stats
+	if vd_heap_stats_get(&ffmpeg_heap) {
+		print_heap_row("ffmpeg", ffmpeg_heap)
+	} else {
+		fmt.printf("  %-10s %s\n", "decoder", "not measured (backend has no heap)")
+	}
 	fmt.printf("  %-32s %s\n", "Process footprint", "not measured (use Instruments)")
 	fmt.printf("  %-32s %s\n", "GPU memory", "not measured")
 
@@ -400,8 +415,8 @@ print_run_report :: proc(stats: ^Run_Stats) {
 		fmt.printf("frames = %#v\n", stats.frames)
 		fmt.printf("permanent_arena = %#v\n", stats.permanent_arena)
 		fmt.printf("scratch_arena = %#v\n", stats.scratch_arena)
+		fmt.printf("sdl_heap = %#v\n", sdl_heap)
 	}
-	return
 }
 
 print_lifecycle_phase :: proc(stats: ^Run_Stats, phase: Lifecycle_Phase) {
@@ -425,7 +440,6 @@ print_lifecycle_phase :: proc(stats: ^Run_Stats, phase: Lifecycle_Phase) {
 			fmt.printf("%-28s %s\n", label, duration)
 		}
 	}
-	return
 }
 
 // Upper-bound estimate: assumes two clock reads per stage record, though consecutive
@@ -459,7 +473,6 @@ print_instrumentation_cost :: proc(stats: ^Run_Stats) {
 		strings.trim_space(format_duration_ms(cost.stage_record_ms)),
 		strings.trim_space(format_duration_ms(cost.arena_sample_ms)),
 	)
-	return
 }
 
 stage_mean_ms :: proc(stage: Stage_Stats) -> f64 {
@@ -490,7 +503,6 @@ print_stage_row :: proc(name: string, stage: Stage_Stats) {
 		format_duration_ms(worst_ms),
 		worst_frame,
 	)
-	return
 }
 
 print_arena_row :: proc(name: string, arena: Arena_Stats) {
@@ -505,7 +517,22 @@ print_arena_row :: proc(name: string, arena: Arena_Stats) {
 		fmt.tprintf("%d", arena.growth_events),
 		fmt.tprintf("%d", arena.release_events),
 	)
-	return
+}
+
+print_heap_row :: proc(name: string, heap: Heap_Stats) {
+	if heap.allocations == 0 {
+		fmt.printf("  %-10s %s\n", name, "no allocations")
+		return
+	}
+	fmt.printf(
+		"  %-10s %11s %13s %12s %12s %15s\n",
+		name,
+		format_bytes(uint(heap.peak_live_bytes)),
+		format_bytes(uint(heap.live_bytes)),
+		fmt.tprintf("%d", heap.allocations),
+		fmt.tprintf("%d", heap.frees),
+		format_bytes(uint(heap.total_bytes)),
+	)
 }
 
 format_sdl_version :: proc(version: i32) -> string {

@@ -64,6 +64,9 @@ App code never calls Tracy directly; it uses `desktop/trace.odin`:
   (`SQUEEZE_ALLOC_CALLSTACK`, default 16). `free_all` discards the pool; moved resizes
   keep the old block live like the arena does; temp-scope rewinds are not reported
   until the next `free_all`. Returns the arena allocator unchanged when Tracy is off.
+- SDL allocations: `trace_init` installs `SDL_SetMemoryFunctions` hooks (pool `sdl`)
+  that forward to SDL's original allocator and report to Tracy. Must stay before any
+  SDL call. Memory Metal/AppKit/CoreAudio allocate internally is not visible.
 
 Compare Tracy's zone statistics against the shutdown report; both should agree.
 

@@ -84,7 +84,8 @@ smoke-tracy:
 # Configure all C targets; building a subset does not shrink the IDE database
 configure-vd:
     cmake --preset {{quote(vd_preset)}} {{if vd_backend == "" { "" } else { quote("-DVD_BACKEND=" + vd_backend) }}} \
-        -DVD_TRACY={{if tracy == "off" { "OFF" } else { "ON" }}} -DVD_TRACY_CALLSTACK={{tracy_callstack}}
+        -DVD_TRACY={{if tracy == "off" { "OFF" } else { "ON" }}} -DVD_TRACY_CALLSTACK={{tracy_callstack}} \
+        -DVD_TRACY_ALLOC_CALLSTACK={{tracy_alloc_callstack}}
 
 # Unity build + archive merge. FFmpeg must already be built.
 build-shim: configure-vd
