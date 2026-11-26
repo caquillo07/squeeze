@@ -178,6 +178,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 ## Next Session
 1. **Odin frame pointers (waiting on upstream):** still reproduces on `dev-2026-11-nightly:9a69916`; raised on the Odin Discord 2026-11-04. Decide the stopgap once they answer. Previously: re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
 2. Event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
+3. **Odin globals invisible to LLDB by name (file upstream):** hover, watches, and Evaluate show "unknown type" for every Odin global; workaround is `og platform.app_input` in CLion's LLDB tab (dotfiles `odin_global.py`). Draft + repro: `docs/upstream/odin-global-debug-names/`. No existing issue (searched 2026-11-25); #7831 chose a printer-only fix for `any`, and the draft addresses its gdb trade-off. Re-run the repro on the latest nightly, then file `ISSUE.md` (user files it)
 
 ## First Findings (Debug build, dummy workload)
 - ~82% of session time is inside `SDL_RenderPresent` — waiting, not work. We redraw a static image ~129×/s; battery fix later: skip presenting when nothing changed.
