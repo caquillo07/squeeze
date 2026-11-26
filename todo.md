@@ -103,7 +103,7 @@ not vendored or built here. Bindings: `oskarnp/odin-tracy` (linked from Tracy's 
 - [x] Verified in Tracy's Memory view: `permanent`/`scratch` pools, 3.5 MB frame buffer, scratch emptying each frame; C (SDL) frames symbolicate
 - [ ] **Odin frames missing from callstacks**: Odin omits frame pointers on macOS arm64 (no `"frame-pointer"` IR attribute; `x29` never set), and Tracy's macOS client walks frame pointers via `backtrace()`. Unwind tables are fine (libunwind walks Odin frames). Still present in `dev-2026-10-nightly:84bc3fc`. Draft issue + repro: `docs/upstream/odin-frame-pointers/`
 - [x] Loud arena free guard: wrapper installed in Debug or Tracy builds; every non-nil `free` logs an error at the caller's location. Fixed our hit: removed `log.destroy_console_logger` at shutdown (logger lives in the permanent arena). Verified headlessly
-- [ ] Switch the free guard to an assert once real runs are clean
+- [x] Free guard is now a `fmt.panicf` at the caller's location (stays on with `-disable-assert`)
 - [x] Callstack depths enforced 0..62 at compile time (Odin `#assert`s, C `#error` in `vd_trace.h`)
 - [x] SDL allocations: hooks via `SDL_SetMemoryFunctions` in `trace_init` (first in main), pool `sdl`, report-only over SDL's original allocator, Tracy builds only. Install verified by reading functions back (pinned binding drops the bool result). Verified headlessly
 - [x] `sdl` pool verified: all SDL allocations freed by exit
@@ -177,8 +177,7 @@ window was occluded/changing displays) and a 139 ms event-pump block during a mo
 
 ## Next Session
 1. **Odin frame pointers (waiting on upstream):** still reproduces on `dev-2026-11-nightly:9a69916`; raised on the Odin Discord 2026-11-04. Decide the stopgap once they answer. Previously: re-run `docs/upstream/odin-frame-pointers/` repro on the latest nightly and re-search upstream; if still present, file `ISSUE.md` (user files it). Then decide a local stopgap for Odin callstacks: (a) patch our Odin build to emit `"frame-pointer"="non-leaf"` on Darwin, or (b) a small patch to the vendored Tracy client to walk with Apple libunwind (`unw_step`) instead of `backtrace()`
-2. Free guard done; run the app a few times, then make it an assert.
-3. Event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
+2. Event-driven loop (known issue), with Tracy before/after; then Phase 3 Profile build + Instruments.
 
 ## First Findings (Debug build, dummy workload)
 - ~82% of session time is inside `SDL_RenderPresent` — waiting, not work. We redraw a static image ~129×/s; battery fix later: skip presenting when nothing changed.

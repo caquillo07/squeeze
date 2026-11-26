@@ -3,6 +3,7 @@ package main
 import "base:intrinsics"
 import "base:runtime"
 import "core:c"
+import "core:fmt"
 import "core:log"
 import "core:mem"
 import sdl "ext:odin-sdl3"
@@ -157,13 +158,13 @@ tracked_arena_allocator_proc :: proc(
 ) {
 	tracked := (^Tracked_Arena)(allocator_data)
 	// Arenas cannot free individually, so any free is a bug: that memory stays live
-	// until free_all. Loud on purpose; becomes an assert once runs are clean.
+	// until free_all. panicf, not assertf: stays on even with -disable-assert.
 	if mode == .Free && old_memory != nil {
-		log.errorf(
+		fmt.panicf(
 			"free() on arena '%s' (%p): arenas only free_all; use free_all or a dedicated allocator",
 			tracked.pool,
 			old_memory,
-			location = location,
+			loc = location,
 		)
 	}
 	data, err := tracked.backing.procedure(tracked.backing.data, mode, size, alignment, old_memory, old_size, location)
