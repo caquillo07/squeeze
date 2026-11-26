@@ -1,10 +1,17 @@
 # Vendored SDL3
 
-- Version: **3.4.4**, from `CMakeLists.txt` and `include/SDL3/SDL_version.h`.
-- Imported from user-supplied `SDL3-3.4.4.tar.gz`; upstream authenticity was not
-  independently verified. Upstream: https://github.com/libsdl-org/SDL
-- Archive SHA-256: `ee712dbe6a89bb140bbfc2ce72358fb5ee5cc2240abeabd54855012db30b3864`.
-- Extracted under `ext/SDL3/` with the top-level archive directory stripped.
+- Version: **3.4.18** (`release-3.4.18-0-g829a65d76`), from `REVISION.txt` and
+  `include/SDL3/SDL_version.h`.
+- Imported 2026-11-25 from `SDL3-3.4.18.tar.gz`, downloaded by the user from the GitHub
+  release page. The detached `.sig` (DSA `1528635D8053A57F77D1E08630A59377A7763BE6`,
+  RSA `0900104363B4C9D4223DE149D913FE7D4B61D39B`) was not checked: the signing keys
+  could not be fetched. Upstream: https://github.com/libsdl-org/SDL
+- Archive SHA-256: `9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3`.
+- Extracted under `ext/SDL3/` with the top-level archive directory stripped, after
+  removing the previous tree so files dropped upstream do not linger.
+- Extraction keeps the release's file mtimes, which can predate existing objects, so
+  make skips the new sources. After replacing the source, delete `build/deps/sdl/`
+  before `just build-sdl`; the C smoke test fails on a stale archive.
 - Upstream source is unmodified. Keep `LICENSE.txt` (zlib license), `REVISION.txt`,
   and bundled third-party notices. The original tarball is ignored, not deleted;
   commit extracted source, not a second binary copy.
@@ -51,9 +58,14 @@ Do not publish different configurations concurrently. `vd_config` controls the C
 and dependency configurations; Odin desktop compilation currently always uses
 `-debug`, even when C/SDL/FFmpeg Release is selected.
 
+`just check-sdl-bindings` fails when `include/SDL3/SDL_version.h` and the Odin
+bindings' `sdl3_version.odin` declare different versions; `prepare-sdl` runs it, so
+every desktop build, check, and Odin smoke test does. Update both together.
+
 C smoke tests check header/library version identity, a clock, a surface allocation,
-and shadercross initialization/formats. Odin smoke tests exercise the pinned
-bindings and inspect surface fields. Debug source lookup is verified in the linked
+and shadercross initialization/formats. Odin smoke tests check that the
+linked library version equals the bindings' version, exercise the pinned bindings,
+and inspect surface fields. Debug source lookup is verified in the linked
 desktop binary; live GUI/Metal rendering and CLion stepping remain user checks.
 
 See [Odin SDL bindings](odin-sdl3/README.md) and

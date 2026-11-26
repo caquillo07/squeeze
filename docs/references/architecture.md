@@ -58,7 +58,7 @@ allocations performed by backend libraries must use their matching cleanup APIs.
 Vendored FFmpeg source lives in `ext/ffmpeg/`. Its configure/make build is explicit,
 out-of-tree, and independent of ordinary VD or Odin builds. The initial configuration
 has no external codec libraries, GPL/nonfree options, encoders, or network support.
-SDL3 3.4.4 and SDL_gpu_shadercross are vendored and built explicitly together,
+SDL3 3.4.18 and SDL_gpu_shadercross are vendored and built explicitly together,
 with local SDL headers and separate Debug/Release artifacts. Odin uses pinned
 project-local SDL bindings that import the selected static archive, never system
 SDL3. Vendored Odin packages use the `ext` collection (for example,

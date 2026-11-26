@@ -1,11 +1,11 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16...4.4)
 
 if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(cmake_build_type_undefined 1)
 endif()
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.4.4")
+project(SDL3 LANGUAGES C VERSION "3.4.18")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_MAINPROJECT ON)
@@ -1097,7 +1097,7 @@ if(SDL_LIBC)
   )
   if(WINDOWS)
     list(APPEND symbols_to_check
-      _copysign _fseeki64 _strrev _ui64toa _uitoa _ultoa _wcsdup
+      _copysign _fseeki64 _strrev _ui64toa _ultoa _wcsdup
     )
   else()
     list(APPEND symbols_to_check
@@ -1179,34 +1179,33 @@ if(SDL_LIBC)
     check_symbol_exists(posix_fallocate "fcntl.h" HAVE_POSIX_FALLOCATE)
     check_symbol_exists(posix_spawn_file_actions_addchdir "spawn.h" HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR)
     check_symbol_exists(posix_spawn_file_actions_addchdir_np "spawn.h" HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR_NP)
+  endif()
+  if(SDL_SYSTEM_ICONV)
+    check_c_source_compiles("
+      #define LIBICONV_PLUG 1 /* in case libiconv header is in include path */
+      #include <stddef.h>
+      #include <iconv.h>
+      int main(int argc, char **argv) {
+          return !iconv_open(NULL,NULL);
+      }" ICONV_IN_LIBC)
 
-    if(SDL_SYSTEM_ICONV)
-      check_c_source_compiles("
-        #define LIBICONV_PLUG 1 /* in case libiconv header is in include path */
-        #include <stddef.h>
-        #include <iconv.h>
-        int main(int argc, char **argv) {
-            return !iconv_open(NULL,NULL);
-        }" ICONV_IN_LIBC)
+    cmake_push_check_state()
+    list(APPEND CMAKE_REQUIRED_LIBRARIES iconv)
+    check_c_source_compiles("
+      #include <stddef.h>
+      #include <iconv.h>
+      int main(int argc, char **argv) {
+          return !iconv_open(NULL,NULL);
+      }" ICONV_IN_LIBICONV)
+    cmake_pop_check_state()
 
-      cmake_push_check_state()
-      list(APPEND CMAKE_REQUIRED_LIBRARIES iconv)
-      check_c_source_compiles("
-        #include <stddef.h>
-        #include <iconv.h>
-        int main(int argc, char **argv) {
-            return !iconv_open(NULL,NULL);
-        }" ICONV_IN_LIBICONV)
-      cmake_pop_check_state()
-
-      if(ICONV_IN_LIBC OR ICONV_IN_LIBICONV)
-        set(HAVE_ICONV 1)
-        set(HAVE_SYSTEM_ICONV TRUE)
-        if(ICONV_IN_LIBICONV AND (SDL_LIBICONV OR (NOT ICONV_IN_LIBC)))
-          sdl_link_dependency(iconv LIBS iconv)
-          set(SDL_USE_LIBICONV 1)
-          set(HAVE_LIBICONV TRUE)
-        endif()
+    if(ICONV_IN_LIBC OR ICONV_IN_LIBICONV)
+      set(HAVE_ICONV 1)
+      set(HAVE_SYSTEM_ICONV TRUE)
+      if(ICONV_IN_LIBICONV AND (SDL_LIBICONV OR (NOT ICONV_IN_LIBC)))
+        sdl_link_dependency(iconv LIBS iconv)
+        set(SDL_USE_LIBICONV 1)
+        set(HAVE_LIBICONV TRUE)
       endif()
     endif()
 
@@ -1776,17 +1775,32 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
 
   set(SDL_DISABLE_DLOPEN_NOTES TRUE)
   if(SDL_DLOPEN_NOTES)
-    set(CHECK_ELF_DLNOTES_SRC [==[
-    #ifndef __ELF__
-      ELF DL notes is only supported on ELF platforms
-    #endif
-    __attribute__ ((used,aligned(4),section(".note.dlopen"))) static const struct {
-      struct { int a; int b; int c; } hdr; char name[4]; __attribute__((aligned(4))) char json[24];
-    } dlnote = { { 4, 0x407c0c0aU, 16 }, "FDO", "[\\"a\\":{\\"a\\":\\"1\\",\\"b\\":\\"2\\"}]" };
-    int main(int argc, char *argv[]) {
-      return argc + dlnote.hdr.a;
-    }
-    ]==])
+    if(POLICY CMP0219)
+      set(CHECK_ELF_DLNOTES_SRC [==[
+        #ifndef __ELF__
+          ELF DL notes is only supported on ELF platforms
+        #endif
+        __attribute__ ((used,aligned(4),section(".note.dlopen"))) static const struct {
+          struct { int a; int b; int c; } hdr; char name[4]; __attribute__((aligned(4))) char json[24];
+        } dlnote = { { 4, 0x407c0c0aU, 16 }, "FDO", "[\"a\":{\"a\":\"1\",\"b\":\"2\"}]" };
+        int main(int argc, char *argv[]) {
+          return argc + dlnote.hdr.a;
+        }
+      ]==])
+    else()
+      # FIXME: drop this once minimum CMake version is >= 4.4
+      set(CHECK_ELF_DLNOTES_SRC [==[
+        #ifndef __ELF__
+          ELF DL notes is only supported on ELF platforms
+        #endif
+        __attribute__ ((used,aligned(4),section(".note.dlopen"))) static const struct {
+          struct { int a; int b; int c; } hdr; char name[4]; __attribute__((aligned(4))) char json[24];
+        } dlnote = { { 4, 0x407c0c0aU, 16 }, "FDO", "[\\"a\\":{\\"a\\":\\"1\\",\\"b\\":\\"2\\"}]" };
+        int main(int argc, char *argv[]) {
+          return argc + dlnote.hdr.a;
+        }
+      ]==])
+    endif()
     check_c_source_compiles("${CHECK_ELF_DLNOTES_SRC}" COMPILER_SUPPORTS_ELFNOTES)
     if(COMPILER_SUPPORTS_ELFNOTES)
       set(SDL_DISABLE_DLOPEN_NOTES FALSE)
@@ -2204,11 +2218,32 @@ elseif(WINDOWS)
       string(APPEND CMAKE_REQUIRED_FLAGS " /I\"$ENV{DXSDK_DIR}\\Include\"")
     endif()
 
-    check_include_file(d3d9.h HAVE_D3D9_H)
-    check_include_file(d3d11_1.h HAVE_D3D11_H)
-    check_include_file(ddraw.h HAVE_DDRAW_H)
-    check_include_file(dsound.h HAVE_DSOUND_H)
-    check_include_file(dinput.h HAVE_DINPUT_H)
+    # d3d9.h may need windows.h, but does not include it itself.
+    check_c_source_compiles("
+      #include <windows.h>
+      #include <d3d9.h>
+      int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }" HAVE_D3D9_H
+    )
+    check_c_source_compiles("
+      #include <d3d11_1.h>
+      int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }" HAVE_D3D11_H
+    )
+    # ddraw.h, dsound.h, and dinput.h may need windows.h, but does not include it itself.
+    check_c_source_compiles("
+      #include <windows.h>
+      #include <ddraw.h>
+      int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }" HAVE_DDRAW_H
+    )
+    check_c_source_compiles("
+      #include <windows.h>
+      #include <dsound.h>
+      int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }" HAVE_DSOUND_H
+    )
+    check_c_source_compiles("
+      #include <windows.h>
+      #include <dinput.h>
+      int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }" HAVE_DINPUT_H
+    )
     if(SDL_CPU_ARM32)  # !!! FIXME: this should probably check if we're !(x86 or x86-64) instead of arm.
       set(HAVE_DINPUT_H 0)
     endif()
@@ -3235,6 +3270,7 @@ elseif(PS2)
       gskit
       dmakit
       ps2_drivers
+      atomic
   )
 elseif(N3DS)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/n3ds/*.c")

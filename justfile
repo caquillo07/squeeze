@@ -35,8 +35,28 @@ build-ffmpeg:
 build-sdl:
     bash scripts/build_sdl.sh {{quote(vd_config)}}
 
+# Fail when the pinned Odin bindings declare a different SDL version than ext/SDL3
+check-sdl-bindings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    header=ext/SDL3/include/SDL3/SDL_version.h
+    bindings=ext/odin-sdl3/sdl3_version.odin
+    sdl=$(awk '$1 == "#define" && $2 ~ /^SDL_(MAJOR|MINOR|MICRO)_VERSION$/ { printf "%s%s", sep, $3; sep = "." }' "$header")
+    odin=$(awk '$1 ~ /^(MAJOR|MINOR|MICRO)_VERSION$/ && $2 == "::" { printf "%s%s", sep, $3; sep = "." }' "$bindings")
+    # Two unparsed versions would compare equal; require both to be complete.
+    for version in "$sdl" "$odin"; do
+        if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Could not read SDL versions: $header gives '$sdl', $bindings gives '$odin'." >&2
+            exit 1
+        fi
+    done
+    if [[ "$sdl" != "$odin" ]]; then
+        echo "SDL $sdl in ext/SDL3 does not match Odin bindings for SDL $odin; update ext/odin-sdl3." >&2
+        exit 1
+    fi
+
 # Publish matching prebuilt SDL artifacts; never configure/build the dependency here
-prepare-sdl:
+prepare-sdl: check-sdl-bindings
     #!/usr/bin/env bash
     set -euo pipefail
     prefix="$PWD/build/deps/sdl/{{vd_config}}/install"
@@ -95,7 +115,7 @@ build-shim: configure-vd
     @echo "VD archive: $PWD/build/desktop/libvd.a"
 
 # Build and run all applicable VD tests
-smoke-vd: build-shim
+smoke-vd: configure-vd
     cmake --build --preset {{quote(vd_preset)}}
     ctest --preset {{quote(vd_preset)}}
     @echo "VD smoke binary: $PWD/{{vd_build_dir}}/vd-smoke"

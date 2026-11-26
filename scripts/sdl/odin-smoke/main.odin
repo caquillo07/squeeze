@@ -4,7 +4,7 @@ import "core:fmt"
 import sdl "ext:odin-sdl3"
 
 main :: proc() {
-	assert(sdl.GetVersion() >= sdl.VERSION, "SDL library is older than the pinned bindings")
+	assert(sdl.GetVersion() == sdl.VERSION, "linked SDL library does not match the pinned bindings")
 	assert(sdl.Init({}), "SDL_Init failed")
 	defer sdl.Quit()
 	assert(sdl.GetPerformanceFrequency() > 0, "SDL clock frequency unavailable")

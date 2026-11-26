@@ -8,11 +8,13 @@ Every vendored dependency and required tool has a recorded, verified version, an
 builds fail loudly on a toolchain mismatch.
 
 ## Context
-FFmpeg 9.0.2 and SDL3 3.4.4 are vendored with recorded archive checksums, but both
-were imported from user-supplied tarballs without verification against upstream.
+FFmpeg 9.0.2 and SDL3 3.4.18 are vendored with recorded archive checksums, but
+neither archive's hash or signature has been verified against upstream (the SDL3
+`.sig` is kept in `tmp/`; its signing keys could not be fetched).
 SDL_gpu_shadercross and SPIRV-Cross have no recorded version, commit, or checksum.
 The Odin compiler is not pinned, even though the SDL bindings are a snapshot of a
-specific nightly (`a2fb372`). Toolchain requirements (clang/SDK, GNU Make, CMake)
+specific nightly (`9a69916`); `just check-sdl-bindings` already checks that the
+bindings and SDL3 declare the same version. Toolchain requirements (clang/SDK, GNU Make, CMake)
 are documented but not checked, so Xcode or tool updates can silently change builds.
 
 ---
@@ -21,7 +23,8 @@ are documented but not checked, so Xcode or tool updates can silently change bui
 
 ### Phase 1 — Verify Existing Imports
 - [ ] Check FFmpeg 9.0.2 archive SHA-256 against upstream's published hash/signature
-- [ ] Check SDL3 3.4.4 archive SHA-256 against upstream's published release
+- [ ] Verify the SDL3 3.4.18 archive signature (import keys `1528635D…7763BE6`,
+      `09001043…4B61D39B`) or its SHA-256 against upstream's published release
 - [ ] Record verification result (date, method) in each `ext/*.README.md`
 
 ### Phase 2 — Record Unpinned Dependencies
