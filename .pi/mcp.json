@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"clion": {
+			"url": "http://127.0.0.1:64362/stream",
+			"headers": {
+				"IJ_MCP_SERVER_PROJECT_PATH": "${HOME}/code/squeeze"
+			},
+			"description": "CLion IDE: code navigation, inspections, run configurations for the squeeze project"
+		}
+	}
+}
